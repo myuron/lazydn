@@ -56,6 +56,17 @@ pub(super) fn failure_text(failure: &Failure) -> String {
     }
 }
 
+/// Why a commit was refused. A timeout is worded apart because the server may have created the commit.
+pub(super) fn commit_failure_text(failure: &Failure) -> String {
+    match (failure.code.as_str(), failure.retry_after, &failure.message) {
+        ("network", _, _) => {
+            "network error — check your log before sending again (it may have been posted)".into()
+        }
+        ("rate_limited", Some(_), _) | (_, _, None) => failure_text(failure),
+        (_, _, Some(message)) => clean(message),
+    }
+}
+
 /// Paths come from the environment, so control characters are dropped like in server strings.
 fn clean_path(path: &Path) -> String {
     path.display()
@@ -95,7 +106,8 @@ pub(super) fn failure_in(action: &Action) -> Option<&Failure> {
         | Action::NotificationsFailed { failure, .. }
         | Action::GroupFailed { failure, .. }
         | Action::MutedFailed { failure, .. }
-        | Action::BlockedFailed { failure, .. } => Some(failure),
+        | Action::BlockedFailed { failure, .. }
+        | Action::CommitFailed { failure, .. } => Some(failure),
         _ => None,
     }
 }
@@ -113,7 +125,8 @@ pub(super) fn req_in(action: &Action) -> Option<ReqId> {
         | Action::NotificationsFailed { req, .. }
         | Action::GroupFailed { req, .. }
         | Action::MutedFailed { req, .. }
-        | Action::BlockedFailed { req, .. } => Some(*req),
+        | Action::BlockedFailed { req, .. }
+        | Action::CommitFailed { req, .. } => Some(*req),
         _ => None,
     }
 }

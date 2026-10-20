@@ -429,6 +429,7 @@ fn retry_failures() -> Vec<Failure> {
         Failure {
             code: "rate_limited".into(),
             retry_after: Some(30),
+            message: None,
         },
         Failure::new("decode"),
     ]

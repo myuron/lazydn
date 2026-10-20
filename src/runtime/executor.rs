@@ -59,6 +59,10 @@ pub(super) fn failure_of(error: &ApiError) -> Failure {
             ErrorKind::Http { retry_after, .. } => *retry_after,
             _ => None,
         },
+        message: match &error.kind {
+            ErrorKind::Http { message, .. } => Some(message.clone()),
+            _ => None,
+        },
     }
 }
 
@@ -70,7 +74,24 @@ async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
         | Effect::PrepareSignIn { .. }
         | Effect::OpenUrl(_)
         | Effect::CopyToClipboard(_)
-        | Effect::RegisterDevice { .. } => return None,
+        | Effect::RegisterDevice { .. }
+        | Effect::SaveDrafts { .. }
+        | Effect::LoadDrafts { .. } => return None,
+        Effect::CreateCommit {
+            body,
+            parent_id,
+            quoted_commit_id,
+            req,
+        } => client
+            .create_commit(body, parent_id.as_deref(), quoted_commit_id.as_deref())
+            .await
+            .map(|r| {
+                let action = Action::CommitCreated {
+                    req: *req,
+                    commit: Box::new(r.data),
+                };
+                (action, r.rate)
+            }),
         Effect::FetchLog { tab, cursor, req } => client
             .log(log_name(*tab), None, cursor.as_deref())
             .await
@@ -298,6 +319,7 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         },
         Effect::FetchMuted { req, .. } => Action::MutedFailed { req: *req, failure },
         Effect::FetchBlocked { req, .. } => Action::BlockedFailed { req: *req, failure },
+        Effect::CreateCommit { req, .. } => Action::CommitFailed { req: *req, failure },
         Effect::PollLog { .. }
         | Effect::Quit
         | Effect::UseGuestClient
@@ -305,7 +327,9 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         | Effect::PrepareSignIn { .. }
         | Effect::OpenUrl(_)
         | Effect::CopyToClipboard(_)
-        | Effect::RegisterDevice { .. } => return None,
+        | Effect::RegisterDevice { .. }
+        | Effect::SaveDrafts { .. }
+        | Effect::LoadDrafts { .. } => return None,
     })
 }
 

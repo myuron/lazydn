@@ -112,6 +112,9 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::OpenUrl(_)
         | Effect::CopyToClipboard(_)
         | Effect::RegisterDevice { .. }
+        | Effect::CreateCommit { .. }
+        | Effect::SaveDrafts { .. }
+        | Effect::LoadDrafts { .. }
         | Effect::Quit => None,
     }
 }

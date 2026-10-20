@@ -5,11 +5,11 @@ use crate::app::{App, ConnTab, LogTab, Modal, Pane, ProfileTab, Screen, Session,
 use crate::layout::LayoutMode;
 use crate::notifications::Filter;
 
-/// Maps any terminal event to an action; a paste only reaches the sign-in dialog.
+/// Maps any terminal event to an action; a paste only reaches the sign-in dialog or an open composer.
 pub fn map_event(app: &App, event: &Event) -> Option<Action> {
     match event {
         Event::Key(key) => map_key(app, *key),
-        Event::Paste(text) if app.modal() == Some(Modal::SignIn) => {
+        Event::Paste(text) if app.modal() == Some(Modal::SignIn) || app.composer_focused() => {
             Some(Action::Paste(text.clone()))
         }
         Event::Resize(w, h) => Some(Action::Resize(*w, *h)),

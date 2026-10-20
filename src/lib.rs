@@ -2,7 +2,9 @@ pub mod action;
 pub mod api;
 pub mod app;
 pub mod body;
+pub mod compose;
 pub mod config;
+pub mod drafts;
 pub mod editor;
 pub mod feed;
 pub mod highlight;
@@ -24,7 +26,11 @@ pub mod ui;
 #[cfg(test)]
 mod body_tests;
 #[cfg(test)]
+mod compose_tests;
+#[cfg(test)]
 mod config_tests;
+#[cfg(test)]
+mod drafts_tests;
 #[cfg(test)]
 mod editor_tests;
 #[cfg(test)]

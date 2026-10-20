@@ -1,5 +1,6 @@
 pub mod aside;
 pub mod card;
+pub mod compose;
 pub mod connections;
 pub mod feed;
 pub mod help;
@@ -51,6 +52,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
     match app.modal() {
         Some(Modal::Help) => help::render(frame, area),
         Some(Modal::SignIn) => signin::render(app, frame, area),
+        Some(Modal::Composer) => compose::render_modal(app, frame, area),
         None => {}
     }
     toast::render(app, frame, area, panes.status);
@@ -58,6 +60,8 @@ pub fn draw(app: &App, frame: &mut Frame) {
 
 #[cfg(test)]
 mod card_tests;
+#[cfg(test)]
+mod compose_tests;
 #[cfg(test)]
 mod feed_tests;
 #[cfg(test)]

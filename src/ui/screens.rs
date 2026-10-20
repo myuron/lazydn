@@ -262,6 +262,13 @@ fn draw_connections(app: &App, frame: &mut Frame, inner: Rect, name: &str, tab: 
 fn draw_list(app: &App, frame: &mut Frame, area: Rect, key: FeedKey) {
     let feed = app.feed(key);
     let list_rows = rows(feed, key, app, area.width);
+    if let Some((row, col)) = list_rows.cursor
+        && let Some(y) = row.checked_sub(usize::from(feed.scroll))
+        && y < usize::from(area.height)
+        && col < usize::from(area.width)
+    {
+        frame.set_cursor_position((area.x + col as u16, area.y + y as u16));
+    }
     let visible = list_rows
         .lines
         .into_iter()

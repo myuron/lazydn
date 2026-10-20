@@ -4,9 +4,11 @@ use crate::api::client::RateLimit;
 use crate::api::keys::KeyError;
 use crate::api::pkce::Pkce;
 use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
+use crate::drafts::Drafts;
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::model::{
-    GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User, UserResponse,
+    Commit, GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User,
+    UserResponse,
 };
 use crate::notifications::Filter;
 
@@ -46,6 +48,8 @@ pub struct Failure {
     pub code: String,
     /// Seconds from `Retry-After`, when the server sent it.
     pub retry_after: Option<u64>,
+    /// The API `message` of an HTTP error, as the server wrote it; not yet cleaned for display.
+    pub message: Option<String>,
 }
 
 impl Failure {
@@ -54,6 +58,7 @@ impl Failure {
         Self {
             code: code.into(),
             retry_after: None,
+            message: None,
         }
     }
 }
@@ -276,6 +281,23 @@ pub enum Action {
         kind: ToastKind,
         text: String,
     },
+    /// The server created the commit that `Effect::CreateCommit` sent; applied whatever the age of `req`, since
+    /// the commit exists either way.
+    CommitCreated {
+        req: ReqId,
+        commit: Box<Commit>,
+    },
+    CommitFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The write of the drafts failed, so they are still unsaved.
+    DraftsSaveFailed,
+    /// The drafts of `account` read from disk; they fill only the slots that hold no text yet.
+    DraftsLoaded {
+        account: String,
+        drafts: Drafts,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -362,5 +384,21 @@ pub enum Effect {
     RegisterDevice {
         code: String,
         verifier: Secret,
+    },
+    /// Posts a commit; `parent_id` and `quoted_commit_id` are never both set.
+    CreateCommit {
+        body: String,
+        parent_id: Option<String>,
+        quoted_commit_id: Option<String>,
+        req: ReqId,
+    },
+    /// Writes the drafts of `account` to disk. The runtime does it on the spot, not on a task.
+    SaveDrafts {
+        account: String,
+        drafts: Drafts,
+    },
+    /// Reads the drafts of `account`. The runtime does it on the spot and answers with `Action::DraftsLoaded`.
+    LoadDrafts {
+        account: String,
     },
 }

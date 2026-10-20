@@ -2,7 +2,7 @@
 
 A terminal UI client for [dev-null.sh](https://dev-null.sh), built with Rust and Ratatui.
 
-lazydn is work in progress. Writing commits is not available yet.
+lazydn is work in progress. You can read the log, threads, profiles and notifications, and write commits (`c`). Replies, quotes, stars and the like are not available yet.
 
 ## Start
 
@@ -33,6 +33,7 @@ The browser is opened only when you press `Ctrl+O`.
 | `id_ed25519` (device key, mode 600) | config directory |
 | `config.toml` (appearance) | config directory |
 | `state.toml` (last visit per log tab) | state directory |
+| `drafts-<account id>.toml` (unsent commit text, mode 600) | state directory |
 
 The config directory is `$LAZYDN_CONFIG_DIR`, else `$XDG_CONFIG_HOME/lazydn`, else `~/.config/lazydn`.
 The state directory is `$LAZYDN_STATE_DIR`, else `$XDG_STATE_HOME/lazydn`, else `~/.local/state/lazydn`.
@@ -41,6 +42,8 @@ A relative `XDG_*` value is ignored. A relative `LAZYDN_CONFIG_DIR` or `LAZYDN_S
 lazydn only reads `config.toml`; create it yourself. Keys: `theme` (`"dark"` or `"light"`), `collapse_nav`, `lane_dimming`, `ascii` (booleans) and `reply_preview_limit` (1, 3, 5, 10, 15, 20 or 25). A field that is missing falls back to its default; one with the wrong type or a value that is not allowed also falls back, and is reported in a toast.
 
 The last visit is saved when you quit with `Q` or `Ctrl+C`; SIGTERM and SIGHUP (closing the terminal) do not save it.
+
+Drafts are saved about two seconds after you stop typing, and at once when you close the composer with `Esc`, post a commit or quit. Post with `Ctrl+Enter` where the terminal can tell it from `Enter` (e.g. kitty, foot, Ghostty, WezTerm), and with `Ctrl+S` everywhere.
 
 ### Environment
 
@@ -60,6 +63,7 @@ The last visit is saved when you quit with `Q` or `Ctrl+C`; SIGTERM and SIGHUP (
 | `1`-`3` | Switch tab |
 | `g` then `l` `e` `n` `p` `s` `v` | Log, Trending, Notifications, Profile, Settings, Saved |
 | `R` | Refresh |
+| `c` | Write a commit (`Ctrl+Enter` or `Ctrl+S` posts, `Esc` closes) |
 | `?` | Help |
 | `Q` | Quit |
 

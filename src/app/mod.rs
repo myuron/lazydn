@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
+mod compose;
 mod key_status;
 mod last_visit;
 mod notifications;
@@ -21,7 +22,7 @@ pub use toast::{Toast, ToastKind};
 
 use crate::action::{Action, Effect, Failure};
 use crate::api::client::RateLimit;
-use crate::feed::{Feed, FeedKey, LoadState, ReqId, settle_scroll};
+use crate::feed::{Feed, FeedKey, LoadState, ReqId, ensure_visible, settle_scroll};
 use crate::keyboard::KeyboardMode;
 use crate::layout::LayoutMode;
 use crate::model::Lane;
@@ -132,6 +133,8 @@ pub enum Pane {
 pub enum Modal {
     Help,
     SignIn,
+    /// The composer, over every screen but Log.
+    Composer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -228,8 +231,18 @@ pub struct App {
     sign_in_boundary: Option<ReqId>,
     key_path: std::path::PathBuf,
     keyboard: KeyboardMode,
+    /// The open composer, if any.
+    compose: Option<crate::compose::Compose>,
+    /// Every draft of the signed-in account.
+    drafts: crate::drafts::Drafts,
+    /// The commit that is out, kept after the composer closes so that it cannot be sent twice.
+    in_flight: Option<crate::compose::InFlight>,
     /// Consecutive failed attempts to confirm the session; sets the retry delay while restoring.
     restore_failures: u32,
+    /// When the drafts last changed without being written.
+    drafts_dirty_at: Option<OffsetDateTime>,
+    /// A write failed, so the drafts are not on disk; they are written when the user leaves the composer or quits, not on a timer.
+    drafts_unsaved: bool,
 }
 
 impl App {
@@ -298,6 +311,11 @@ impl App {
             key_path,
             keyboard: KeyboardMode::default(),
             restore_failures: 0,
+            compose: None,
+            drafts: crate::drafts::Drafts::default(),
+            in_flight: None,
+            drafts_dirty_at: None,
+            drafts_unsaved: false,
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
             let text = toast::key_error_text(error, path);
@@ -313,7 +331,7 @@ impl App {
         let mut failure_toast: Option<String> = None;
         let mut effects = Vec::new();
         match action {
-            Action::Quit => return vec![Effect::Quit],
+            Action::Quit => return self.quit_effects(),
             Action::Resize(w, h) => self.size = (w, h),
             Action::Init => {
                 if matches!(self.session, Session::Restoring) {
@@ -392,16 +410,13 @@ impl App {
             }
 
             Action::CloseModal => self.modal = None,
-            Action::Commit => {
-                if matches!(self.session, Session::Guest) {
-                    effects.extend(self.open_sign_in());
-                }
-            }
+            Action::Commit => effects.extend(self.open_composer()),
             Action::Tick(now) => {
                 self.now = now;
                 self.expire_toast();
                 effects.extend(self.poll_me());
                 effects.extend(self.poll());
+                effects.extend(self.due_save());
             }
             Action::FeedLoaded { key, req, page } => {
                 let now = self.now;
@@ -544,6 +559,7 @@ impl App {
             Action::SwitchConnTab(tab) => effects.extend(self.conn_switch_tab(tab)),
             Action::ApiStatus { rate, online } => self.apply_api_status(rate, online),
             Action::SetLastVisit { tab, id } => self.set_last_visit(tab, id),
+            Action::Paste(text) if self.composer_focused() => self.paste_into_composer(&text),
             sign_in_action @ (Action::Paste(_)
             | Action::SignInInput(_)
             | Action::SignInBackspace
@@ -559,7 +575,13 @@ impl App {
             | Action::SignInFailed { .. }
             | Action::DeviceRegistered { .. }
             | Action::Notice { .. }) => effects.extend(self.on_sign_in_action(sign_in_action)),
-            Action::Compose(_) => {}
+            Action::Compose(key) => effects.extend(self.on_compose_key(key)),
+            Action::CommitCreated { req, commit } => {
+                effects.extend(self.commit_created(req, *commit))
+            }
+            Action::CommitFailed { req, failure } => self.commit_failed(req, &failure),
+            Action::DraftsLoaded { account, drafts } => self.drafts_loaded(&account, drafts),
+            Action::DraftsSaveFailed => self.drafts_unsaved = true,
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
                 if let Some(state) = self.threads.get_mut(&id)
@@ -621,6 +643,7 @@ impl App {
         if let Some(text) = failure_toast {
             self.show_toast(ToastKind::Error, text);
         }
+        self.reconcile_compose();
         self.reconcile_scroll();
         effects
     }
@@ -773,9 +796,9 @@ impl App {
         self.nav_cursor
     }
 
-    /// Whether keys go to a composer's editor. No composer exists yet.
+    /// Whether keys go to a composer's editor.
     pub fn composer_focused(&self) -> bool {
-        false
+        self.compose.is_some() && self.modal != Some(Modal::SignIn)
     }
 
     pub fn keyboard(&self) -> KeyboardMode {
@@ -1030,6 +1053,13 @@ impl App {
         };
         let tabs = if matches!(key, FeedKey::Log(_)) { 2 } else { 0 };
         let view = main.height.saturating_sub(2 + tabs) as usize;
+        if matches!(key, FeedKey::Log(_))
+            && let Some(height) = crate::ui::compose::inline_height(self)
+        {
+            let scroll = ensure_visible(0, height, self.feeds[&key].scroll as usize, view);
+            self.feeds.entry(key).or_default().scroll = scroll.min(u16::MAX as usize) as u16;
+            return;
+        }
         let feed = &self.feeds[&key];
         let scroll = if feed.selected == 0 {
             0

@@ -33,6 +33,7 @@ fn failure(code: &str, retry_after: Option<u64>) -> Failure {
     Failure {
         code: code.into(),
         retry_after,
+        message: None,
     }
 }
 

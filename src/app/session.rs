@@ -33,12 +33,13 @@ impl App {
 
     /// Drops everything the account had loaded, since the server no longer vouches for it.
     fn return_to_guest(&mut self, toast_text: String) -> Vec<Effect> {
+        let mut effects = self.save_effect();
         self.session = Session::Guest;
         self.reset_account_data();
         self.show(Screen::Log(LogTab::Latest));
         self.show_toast(ToastKind::Error, toast_text);
         self.reconcile_scroll();
-        let mut effects = vec![Effect::UseGuestClient];
+        effects.push(Effect::UseGuestClient);
         effects.extend(self.open_sign_in());
         effects
     }
@@ -61,6 +62,7 @@ impl App {
         self.history.clear();
         self.g_pending = false;
         self.focus = Pane::Main;
+        self.forget_composer_state();
     }
 
     /// Fetches for the screen the user is on without moving them, since they may have left the first one.
@@ -71,7 +73,9 @@ impl App {
         self.me_pending = None;
         self.restore_failures = 0;
         self.session = Session::SignedIn(Me::from(response));
-        self.entry_fetch()
+        let mut effects = self.load_drafts_effect();
+        effects.extend(self.entry_fetch());
+        effects
     }
 
     /// Counts a failed attempt and starts the retry delay from now, not from when the request went out.

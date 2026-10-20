@@ -34,6 +34,8 @@ pub struct FeedRows {
     pub lines: Vec<Line<'static>>,
     /// One entry per item of the feed, in order.
     pub cards: Vec<CardSpan>,
+    /// Where the terminal cursor goes, as (row of `lines`, column), while a composer on this list has the focus.
+    pub cursor: Option<(usize, usize)>,
 }
 
 pub fn render_ctx(app: &App) -> RenderCtx {
@@ -96,7 +98,7 @@ pub(crate) fn retry_hint(code: &str, width: usize) -> Line<'static> {
     plain(&format!(" error: {code} — press R to retry"), width)
 }
 
-fn composer(width: usize) -> Vec<Line<'static>> {
+fn composer(width: usize, draft: Option<String>) -> Vec<Line<'static>> {
     let hint_col = HINT_COL_MAX.min(width.saturating_sub(1 + HINT.len()));
     let hint_row = if hint_col >= HINT_COL_MIN {
         format!(" ┆{}{HINT}", " ".repeat(hint_col - 2))
@@ -105,9 +107,15 @@ fn composer(width: usize) -> Vec<Line<'static>> {
     };
     vec![
         plain(" ┆", width),
-        plain(" ◌  What did you ship?", width),
+        match &draft {
+            Some(first) => plain(&format!(" ◌  {first}"), width.saturating_sub(1)),
+            None => plain(" ◌  What did you ship?", width),
+        },
         plain(&hint_row, width),
-        plain(" ┆", width),
+        match draft {
+            Some(_) => plain(" ┆  stash@{0} draft saved", width),
+            None => plain(" ┆", width),
+        },
     ]
 }
 
@@ -208,7 +216,15 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
         return out;
     }
     if is_log && own.is_some() {
-        out.lines.extend(composer(w));
+        match crate::ui::compose::inline_field(app, w) {
+            Some((field, cursor)) => {
+                out.cursor = Some((out.lines.len() + cursor.0, cursor.1));
+                out.lines.extend(field);
+            }
+            None => out
+                .lines
+                .extend(composer(w, crate::ui::compose::draft_preview(app))),
+        }
     }
 
     if chronological && feed.new_commits > 0 {

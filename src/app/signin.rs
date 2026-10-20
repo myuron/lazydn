@@ -292,6 +292,7 @@ impl App {
         self.sign_in = Default::default();
         self.modal = None;
         let mut effects = vec![Effect::UseSignedClient];
+        effects.extend(self.load_drafts_effect());
         // The signed-in session passes the guard, so only the fetch is left to collect.
         let _ = self.goto(Screen::Log(LogTab::Following));
         effects.extend(self.entry_fetch());

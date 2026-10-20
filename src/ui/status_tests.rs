@@ -39,6 +39,7 @@ fn rate_limited(w: u16, h: u16) -> App {
         failure: Failure {
             code: "rate_limited".into(),
             retry_after: Some(12),
+            message: None,
         },
     });
     app

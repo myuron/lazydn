@@ -115,7 +115,11 @@ impl SignInHost {
             ],
             Err(error) => {
                 let mut out = vec![Action::SignInFailed {
-                    failure: failure_of(&error),
+                    // The dialog words its own errors, so the server's message is not carried.
+                    failure: Failure {
+                        message: None,
+                        ..failure_of(&error)
+                    },
                 }];
                 match error.kind {
                     ErrorKind::Network(_) => out.push(status(None, false)),

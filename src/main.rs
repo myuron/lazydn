@@ -118,7 +118,7 @@ fn main() -> Result<()> {
         save_error: Some(error),
     }) = &result
     {
-        eprintln!("lazydn: could not save the last visit: {error}");
+        eprintln!("lazydn: could not save: {error}");
     }
     result.map(|_| ())
 }

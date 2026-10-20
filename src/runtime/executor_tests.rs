@@ -68,6 +68,24 @@ fn error_body(status: u16, code: &str) -> ResponseTemplate {
     )
 }
 
+fn failure_mut(action: &mut Action) -> Option<&mut Failure> {
+    match action {
+        Action::FeedFailed { failure, .. }
+        | Action::ThreadFailed { failure, .. }
+        | Action::RepliesFailed { failure, .. }
+        | Action::UserFailed { failure, .. }
+        | Action::ProfileFeedFailed { failure, .. }
+        | Action::ConnectionsFailed { failure, .. }
+        | Action::MeFailed { failure, .. }
+        | Action::NotificationsFailed { failure, .. }
+        | Action::GroupFailed { failure, .. }
+        | Action::MutedFailed { failure, .. }
+        | Action::BlockedFailed { failure, .. }
+        | Action::CommitFailed { failure, .. } => Some(failure),
+        _ => None,
+    }
+}
+
 async fn serve(server: &MockServer, p: &str, response: ResponseTemplate) {
     Mock::given(method("GET"))
         .and(path(p))
@@ -541,7 +559,13 @@ async fn every_api_effect_fails_into_its_failed_action_with_the_code() {
 
         let actions = execute(&signed(&server), effect.clone()).await;
 
-        assert_eq!(actions, vec![expected, ONLINE], "{effect:?}");
+        // The server's message is the one the mock sends; the rest is what this test is about.
+        let mut expected = expected;
+        if let Some(failure) = failure_mut(&mut expected) {
+            failure.message = Some("m".into());
+        }
+        assert_eq!(actions[0], expected, "{effect:?}");
+        assert_eq!(actions[1..], [ONLINE], "{effect:?}");
     }
 }
 
@@ -567,7 +591,10 @@ async fn a_failure_keeps_the_req_and_the_identity_of_the_request() {
             thread: "t1".into(),
             parent: "p1".into(),
             req: ReqId(41),
-            failure: Failure::new("boom"),
+            failure: Failure {
+                message: Some("m".into()),
+                ..Failure::new("boom")
+            },
         }]
     );
 }
@@ -581,7 +608,10 @@ async fn an_error_without_a_code_is_reported_as_http_status() {
         results,
         vec![Action::MeFailed {
             req: REQ,
-            failure: Failure::new("http_503"),
+            failure: Failure {
+                message: Some("Service Unavailable".into()),
+                ..Failure::new("http_503")
+            },
         }]
     );
 }
@@ -609,6 +639,7 @@ async fn retry_after_travels_with_the_failure() {
             failure: Failure {
                 code: "rate_limited".into(),
                 retry_after: Some(12),
+                message: Some("m".into()),
             },
         }]
     );
@@ -635,7 +666,10 @@ async fn a_blocked_user_failure_carries_the_user_of_the_body() {
         vec![Action::UserFailed {
             username: "bob".into(),
             req: REQ,
-            failure: Failure::new("user_blocked"),
+            failure: Failure {
+                message: Some("Blocked".into()),
+                ..Failure::new("user_blocked")
+            },
             blocked_user: Some(Box::new(parse::<UserResponse>(USER).data)),
         }]
     );
@@ -660,7 +694,10 @@ async fn a_user_failure_with_another_code_has_no_blocked_user() {
         vec![Action::UserFailed {
             username: "bob".into(),
             req: REQ,
-            failure: Failure::new("user_unavailable"),
+            failure: Failure {
+                message: Some("m".into()),
+                ..Failure::new("user_unavailable")
+            },
             blocked_user: None,
         }]
     );
@@ -994,6 +1031,13 @@ fn failure_for_has_no_action_for_effects_nobody_waits_on() {
         poll,
         Effect::Quit,
         Effect::UseGuestClient,
+        Effect::SaveDrafts {
+            account: "a".into(),
+            drafts: crate::drafts::Drafts::default(),
+        },
+        Effect::LoadDrafts {
+            account: "a".into(),
+        },
         Effect::UseSignedClient,
     ] {
         assert_eq!(failure_for(&effect, "panic"), None, "{effect:?}");
@@ -1107,4 +1151,255 @@ async fn cursor_and_types_are_sent_as_query_parameters() {
             .collect();
         assert_eq!(got, expected, "{effect:?}");
     }
+}
+
+// --- 5. posting a commit -----------------------------------------------------------
+
+const POSTED: &str = include_str!("../../tests/fixtures/commit.json");
+
+fn posted_commit() -> crate::model::Commit {
+    serde_json::from_value(parse::<serde_json::Value>(POSTED)["data"].clone())
+        .expect("fixture commit parses")
+}
+
+async fn serve_post(server: &MockServer, response: ResponseTemplate) {
+    Mock::given(method("POST"))
+        .and(path("/api/v1/commits"))
+        .respond_with(response)
+        .mount(server)
+        .await;
+}
+
+fn create(body: &str, parent: Option<&str>, quoted: Option<&str>) -> Effect {
+    Effect::CreateCommit {
+        body: body.into(),
+        parent_id: parent.map(String::from),
+        quoted_commit_id: quoted.map(String::from),
+        req: REQ,
+    }
+}
+
+fn sent_json(request: &Request) -> serde_json::Value {
+    serde_json::from_slice(&request.body).expect("the request body is JSON")
+}
+
+#[tokio::test]
+async fn creating_a_commit_posts_the_body_and_answers_with_the_commit() {
+    let server = MockServer::start().await;
+    serve_post(
+        &server,
+        ResponseTemplate::new(201).set_body_raw(POSTED.as_bytes().to_vec(), "application/json"),
+    )
+    .await;
+
+    let (results, status) = split(execute(&signed(&server), create("hello", None, None)).await);
+
+    assert_eq!(
+        results,
+        vec![Action::CommitCreated {
+            req: REQ,
+            commit: Box::new(posted_commit()),
+        }]
+    );
+    assert_eq!(status, vec![ONLINE]);
+    let requests = received(&server).await;
+    assert_eq!(requests.len(), 1);
+    assert_eq!(
+        sent_json(&requests[0]),
+        serde_json::json!({"body": "hello"})
+    );
+}
+
+#[tokio::test]
+async fn a_reply_posts_the_parent_id_and_a_quote_the_quoted_id() {
+    let server = MockServer::start().await;
+    serve_post(
+        &server,
+        ResponseTemplate::new(201).set_body_raw(POSTED.as_bytes().to_vec(), "application/json"),
+    )
+    .await;
+    let client = signed(&server);
+
+    execute(&client, create("re", Some("p-1"), None)).await;
+    execute(&client, create("qt", None, Some("q-1"))).await;
+
+    let requests = received(&server).await;
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        sent_json(&requests[0]),
+        serde_json::json!({"body": "re", "parent_id": "p-1"})
+    );
+    assert_eq!(
+        sent_json(&requests[1]),
+        serde_json::json!({"body": "qt", "quoted_commit_id": "q-1"})
+    );
+}
+
+#[tokio::test]
+async fn a_refused_commit_carries_the_code_and_the_message_of_the_server() {
+    let server = MockServer::start().await;
+    serve_post(
+        &server,
+        ResponseTemplate::new(422).set_body_raw(
+            br#"{"message":"The body field is required.","code":"validation_failed"}"#.to_vec(),
+            "application/json",
+        ),
+    )
+    .await;
+
+    let (results, status) = split(execute(&signed(&server), create("x", None, None)).await);
+
+    assert_eq!(
+        results,
+        vec![Action::CommitFailed {
+            req: REQ,
+            failure: Failure {
+                code: "validation_failed".into(),
+                retry_after: None,
+                message: Some("The body field is required.".into()),
+            },
+        }]
+    );
+    assert_eq!(status, vec![ONLINE]);
+}
+
+#[tokio::test]
+async fn a_rate_limited_commit_carries_retry_after_and_the_message() {
+    let server = MockServer::start().await;
+    serve_post(
+        &server,
+        ResponseTemplate::new(429)
+            .set_body_raw(
+                br#"{"message":"Too Many Attempts.","code":"rate_limited"}"#.to_vec(),
+                "application/json",
+            )
+            .insert_header("Retry-After", "12"),
+    )
+    .await;
+
+    let (results, _) = split(execute(&signed(&server), create("x", None, None)).await);
+
+    assert_eq!(
+        results,
+        vec![Action::CommitFailed {
+            req: REQ,
+            failure: Failure {
+                code: "rate_limited".into(),
+                retry_after: Some(12),
+                message: Some("Too Many Attempts.".into()),
+            },
+        }]
+    );
+}
+
+#[tokio::test]
+async fn a_commit_that_cannot_reach_the_server_fails_as_network_with_no_message() {
+    let actions = execute(&unreachable_client(), create("x", None, None)).await;
+
+    assert_eq!(
+        actions,
+        vec![
+            Action::CommitFailed {
+                req: REQ,
+                failure: Failure::new("network"),
+            },
+            Action::ApiStatus {
+                rate: None,
+                online: false
+            }
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_commit_that_times_out_fails_as_network_although_the_server_got_it() {
+    let server = MockServer::start().await;
+    serve_post(
+        &server,
+        ResponseTemplate::new(201)
+            .set_body_raw(POSTED.as_bytes().to_vec(), "application/json")
+            .set_delay(Duration::from_secs(1)),
+    )
+    .await;
+    let client = signed(&server).with_timeout(Duration::from_millis(100));
+
+    let actions = execute(&client, create("x", None, None)).await;
+
+    assert_eq!(
+        actions,
+        vec![
+            Action::CommitFailed {
+                req: REQ,
+                failure: Failure::new("network"),
+            },
+            Action::ApiStatus {
+                rate: None,
+                online: false
+            }
+        ]
+    );
+    assert_eq!(received(&server).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_guest_cannot_post_and_nothing_is_sent() {
+    let server = MockServer::start().await;
+    let guest = client_for(&server.uri(), false);
+
+    let actions = execute(&guest, create("x", None, None)).await;
+
+    assert_eq!(
+        actions,
+        vec![Action::CommitFailed {
+            req: REQ,
+            failure: Failure::new("sign_in_required"),
+        }]
+    );
+    assert!(received(&server).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_commit_that_is_both_a_reply_and_a_quote_fails_locally() {
+    let server = MockServer::start().await;
+
+    let actions = execute(&signed(&server), create("x", Some("p"), Some("q"))).await;
+
+    assert_eq!(
+        actions,
+        vec![Action::CommitFailed {
+            req: REQ,
+            failure: Failure::new("invalid_argument"),
+        }]
+    );
+    assert!(received(&server).await.is_empty());
+}
+
+#[test]
+fn a_panicked_post_fails_into_commit_failed_with_the_req() {
+    assert_eq!(
+        failure_for(&create("x", None, None), "panic"),
+        Some(Action::CommitFailed {
+            req: REQ,
+            failure: Failure::new("panic"),
+        })
+    );
+}
+
+#[tokio::test]
+async fn saving_and_loading_drafts_are_not_api_calls() {
+    let server = MockServer::start().await;
+    let client = signed(&server);
+
+    for effect in [
+        Effect::SaveDrafts {
+            account: "a".into(),
+            drafts: crate::drafts::Drafts::default(),
+        },
+        Effect::LoadDrafts {
+            account: "a".into(),
+        },
+    ] {
+        assert_eq!(execute(&client, effect).await, Vec::<Action>::new());
+    }
+    assert!(received(&server).await.is_empty());
 }
