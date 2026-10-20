@@ -1,0 +1,68 @@
+{
+  "data": [
+    {
+      "id": "01a15020-0000-7000-8000-00000000f0f0",
+      "parent_id": "01a15000-0000-7000-8000-0000000b9b9b",
+      "deleted_at": "2026-10-16T09:00:00Z",
+      "replies_count": 0
+    },
+    {
+      "id": "01a15021-0000-7000-8000-00000000f1f1",
+      "short_hash": "000f1f1",
+      "body": "alive reply",
+      "parent_id": "01a15000-0000-7000-8000-0000000b9b9b",
+      "html_url": "https://dev-null.sh/@bob/commits/01a15021-0000-7000-8000-00000000f1f1",
+      "created_at": "2026-10-15T13:02:44Z",
+      "stars_count": 1,
+      "replies_count": 0,
+      "link_preview": null,
+      "images": [],
+      "author": {
+        "id": "user-bob",
+        "username": "bob",
+        "name": null,
+        "avatar_url": "https://avatars.example/bob",
+        "bio": null,
+        "company": null,
+        "location": null,
+        "website": null,
+        "github_url": "https://github.com/bob",
+        "html_url": "https://dev-null.sh/@bob",
+        "feed_url": "https://dev-null.sh/@bob/feed.atom",
+        "created_at": "2026-10-15T13:02:44Z",
+        "lane": 1
+      },
+      "body_segments": [
+        {
+          "type": "text",
+          "text": "alive reply"
+        }
+      ],
+      "preview_segments": null,
+      "mentions": [],
+      "status": "approved",
+      "is_pinned": false,
+      "starred": false,
+      "is_saved": false,
+      "pasteis_count": 0,
+      "deleted_at": null,
+      "quoted_commit_id": null,
+      "reply_preview": {
+        "data": [],
+        "next_cursor": null
+      }
+    }
+  ],
+  "links": {
+    "first": null,
+    "last": null,
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "path": "https://dev-null.sh/api/v1/x",
+    "per_page": 20,
+    "next_cursor": null,
+    "prev_cursor": null
+  }
+}
