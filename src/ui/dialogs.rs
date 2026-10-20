@@ -1,13 +1,15 @@
 use ratatui::Frame;
+use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use crate::dialogs::{DETAILS_MAX, DeleteConfirm, REASONS, ReportFocus, ReportState};
+use crate::dialogs::{DETAILS_MAX, DeleteConfirm, MoreMenu, REASONS, ReportFocus, ReportState};
 use crate::editor::wrap;
 use crate::ui::card::clean_inline;
 use crate::ui::centered;
 use crate::ui::compose::cut_with_ellipsis;
+use crate::ui::theme;
 
 const WIDTH: u16 = 44;
 /// Columns between the borders.
@@ -116,4 +118,37 @@ fn field_rows(report: &ReportState) -> (Vec<String>, (usize, usize), usize) {
     let top = wrapped.cursor.0.saturating_sub(FIELD_ROWS_MAX - 1);
     let rows = wrapped.rows.into_iter().map(|r| r.text).collect();
     (rows, wrapped.cursor, top)
+}
+
+const MENU_WIDTH: u16 = 26;
+/// Columns between the borders.
+const MENU_INNER: usize = 24;
+
+pub fn render_menu(menu: &MoreMenu, truecolor: bool, frame: &mut Frame) {
+    let height = u16::try_from(menu.items.len() + 2).unwrap_or(u16::MAX);
+    let rect = centered(frame.area(), MENU_WIDTH, height);
+    frame.render_widget(Clear, rect);
+    let hash = clean_inline(&menu.short_hash);
+    let block = Block::bordered()
+        .border_type(BorderType::Double)
+        .title(format!(" {hash} "));
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+    let chosen = Style::new().bg(theme::cursor_bg(truecolor));
+    let lines: Vec<Line> = menu
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let on = i == menu.selected;
+            let mark = if on { '▌' } else { ' ' };
+            let text = pad(&format!(" {mark}{}  {}", item.key, item.label), MENU_INNER);
+            if on {
+                Line::styled(text, chosen)
+            } else {
+                Line::raw(text)
+            }
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(lines), inner);
 }

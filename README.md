@@ -71,6 +71,7 @@ Drafts are saved about two seconds after you stop typing, and at once when you c
 | `p` | Give a pastel to the selected commit (only with the pastéis mode on, not to your own) |
 | `y` | Copy the link of the selected commit |
 | `O` | Open the selected commit in the browser; on a profile with no commit, open the user's page |
+| `.` | More menu of the selected commit: every action that applies to it (`j` / `k` choose, `Enter` or the action's key runs it, `Esc` closes) |
 | `d` | Delete your own commit, after a confirmation (`y` deletes, `n` or `Esc` cancels) |
 | `!` | Report the selected commit (not your own): `j` / `k` choose the reason, `Tab` moves to the details, `Enter` sends |
 | `?` | Help |

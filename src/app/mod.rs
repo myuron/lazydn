@@ -7,6 +7,7 @@ mod compose;
 mod copies;
 mod key_status;
 mod last_visit;
+mod menu;
 mod notifications;
 mod profile;
 mod removal;
@@ -143,6 +144,8 @@ pub enum Modal {
     /// Waiting for `y` or `n` before a delete.
     ConfirmDelete,
     Report,
+    /// The list of everything that can be done to the selected card.
+    Menu,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -257,6 +260,8 @@ pub struct App {
     confirm: Option<crate::dialogs::DeleteConfirm>,
     /// The open report dialog.
     report: Option<crate::dialogs::ReportState>,
+    /// The open more menu.
+    menu: Option<crate::dialogs::MoreMenu>,
     /// The deletes that are out, by commit, with the hash the toast names.
     deleting: HashMap<String, (ReqId, String)>,
     /// What became of every commit deleted in this session; loads that were already out are settled by it.
@@ -339,6 +344,7 @@ impl App {
             writes: HashMap::new(),
             confirm: None,
             report: None,
+            menu: None,
             deleting: HashMap::new(),
             deleted: HashMap::new(),
             reports: HashMap::new(),
@@ -619,6 +625,8 @@ impl App {
             Action::CommitFailed { req, failure } => self.commit_failed(req, &failure),
             Action::DraftsLoaded { account, drafts } => self.drafts_loaded(&account, drafts),
             Action::DraftsSaveFailed => self.drafts_unsaved = true,
+            Action::OpenMenu => effects.extend(self.open_menu()),
+            Action::MenuKey(key) => effects.extend(self.on_menu_key(key)),
             Action::Delete => effects.extend(self.open_delete()),
             Action::ConfirmDelete => effects.extend(self.confirm_delete()),
             Action::Report => effects.extend(self.open_report()),

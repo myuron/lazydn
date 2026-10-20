@@ -5,6 +5,7 @@ use crate::dialogs::{DETAILS_MAX, REASONS, ReportFocus, ReportState};
 use crate::editor::Editor;
 use crate::feed::ReqId;
 use crate::keymap::ReportKey;
+use crate::model::Commit;
 use crate::text::is_unsafe_char;
 
 fn clean_paste(text: &str, room: usize) -> String {
@@ -42,9 +43,13 @@ impl App {
         if let Some(early) = self.session_gate() {
             return early;
         }
-        let Some(card) = self.selected_commit() else {
-            return Vec::new();
-        };
+        match self.selected_commit() {
+            Some(card) => self.open_report_on(card),
+            None => Vec::new(),
+        }
+    }
+
+    pub(super) fn open_report_on(&mut self, card: Commit) -> Vec<Effect> {
         // The answer of the report that was closed with Esc is still due.
         if !self.not_own(&card) || self.reports.contains_key(&card.id) {
             return Vec::new();

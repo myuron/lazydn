@@ -339,6 +339,10 @@ pub enum Action {
         req: ReqId,
         failure: Failure,
     },
+    /// `.`: opens the more menu of the selected card.
+    OpenMenu,
+    /// A key typed in the more menu.
+    MenuKey(crate::keymap::MenuKey),
     /// `d`: asks whether to delete the selected card.
     Delete,
     /// `y` in the confirmation: deletes the card.

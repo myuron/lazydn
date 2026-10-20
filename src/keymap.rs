@@ -93,6 +93,33 @@ fn map_report_key(app: &App, key: KeyEvent) -> Option<Action> {
     }
 }
 
+/// The menu reads the choice keys, the keys of its items, Esc and Ctrl+C; the rest is ignored so that nothing
+/// slips past it.
+fn map_menu_key(app: &App, key: KeyEvent) -> Option<Action> {
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return (key.code == KeyCode::Char('c')).then_some(Action::Quit);
+    }
+    let menu = |k| Some(Action::MenuKey(k));
+    match key.code {
+        KeyCode::Esc => Some(Action::CloseModal),
+        KeyCode::Enter => menu(MenuKey::Select),
+        KeyCode::Char('j') | KeyCode::Down => menu(MenuKey::Down),
+        KeyCode::Char('k') | KeyCode::Up => menu(MenuKey::Up),
+        KeyCode::Char(c)
+            if !key.modifiers.contains(KeyModifiers::ALT)
+                && app
+                    .menu()
+                    .is_some_and(|m| m.items.iter().any(|i| i.key == c)) =>
+        {
+            menu(MenuKey::Item(c))
+        }
+        _ => None,
+    }
+}
+
 pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if app.modal() == Some(Modal::SignIn) {
         return map_sign_in_key(key);
@@ -103,6 +130,7 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     match app.modal() {
         Some(Modal::ConfirmDelete) => return map_confirm_key(key),
         Some(Modal::Report) => return map_report_key(app, key),
+        Some(Modal::Menu) => return map_menu_key(app, key),
         _ => {}
     }
     if key.kind != KeyEventKind::Press {
@@ -227,6 +255,7 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('O') if commit_cards => Some(Action::OpenInBrowser),
             KeyCode::Char('d') if commit_cards => Some(Action::Delete),
             KeyCode::Char('!') if commit_cards => Some(Action::Report),
+            KeyCode::Char('.') if commit_cards => Some(Action::OpenMenu),
             KeyCode::Char('@') if !matches!(app.screen(), Screen::Connections(..)) => {
                 Some(Action::OpenAuthor)
             }
@@ -255,6 +284,17 @@ fn g_target(app: &App, c: char) -> Option<Screen> {
         'v' => Some(Screen::Saved),
         _ => None,
     }
+}
+
+/// A key typed in the more menu; Esc and Ctrl+C are `CloseModal` and `Quit` instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuKey {
+    Up,
+    Down,
+    /// Enter: runs the chosen item.
+    Select,
+    /// The key an item starts with: runs that item.
+    Item(char),
 }
 
 /// A key typed in the report dialog; Esc and Ctrl+C are `CloseModal` and `Quit` instead.

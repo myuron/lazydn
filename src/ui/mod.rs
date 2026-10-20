@@ -64,6 +64,11 @@ pub fn draw(app: &App, frame: &mut Frame) {
                 dialogs::render_report(report, frame);
             }
         }
+        Some(Modal::Menu) => {
+            if let Some(menu) = app.menu() {
+                dialogs::render_menu(menu, app.prefs().truecolor, frame);
+            }
+        }
         None => {}
     }
     toast::render(app, frame, area, panes.status);
@@ -75,6 +80,8 @@ mod card_tests;
 mod compose_tests;
 #[cfg(test)]
 mod feed_tests;
+#[cfg(test)]
+mod menu_tests;
 #[cfg(test)]
 mod notifications_tests;
 #[cfg(test)]

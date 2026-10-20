@@ -47,6 +47,8 @@ mod last_visit_tests;
 #[cfg(test)]
 mod logic_tests;
 #[cfg(test)]
+mod menu_tests;
+#[cfg(test)]
 mod notifications_tests;
 #[cfg(test)]
 mod profile_tests;

@@ -119,10 +119,16 @@ impl App {
 
     /// Flips the flag of the selected card in every copy, and asks the server to do the same.
     fn toggle(&mut self, kind: WriteKind) -> Vec<Effect> {
-        let card = match self.write_target() {
-            Ok(card) => card,
-            Err(early) => return early,
-        };
+        match self.write_target() {
+            Ok(card) => self.toggle_on(kind, card),
+            Err(early) => early,
+        }
+    }
+
+    pub(super) fn toggle_on(&mut self, kind: WriteKind, card: Commit) -> Vec<Effect> {
+        if self.is_deleting(&card.id) {
+            return Vec::new();
+        }
         if kind == WriteKind::Star && !self.not_own(&card) {
             return Vec::new();
         }
@@ -147,10 +153,16 @@ impl App {
     }
 
     pub(super) fn give_pastel(&mut self) -> Vec<Effect> {
-        let card = match self.write_target() {
-            Ok(card) => card,
-            Err(early) => return early,
-        };
+        match self.write_target() {
+            Ok(card) => self.give_pastel_to(card),
+            Err(early) => early,
+        }
+    }
+
+    pub(super) fn give_pastel_to(&mut self, card: Commit) -> Vec<Effect> {
+        if self.is_deleting(&card.id) {
+            return Vec::new();
+        }
         let mode = matches!(&self.session, Session::SignedIn(me) if me.pasteis_mode);
         if !mode || !self.not_own(&card) {
             return Vec::new();
@@ -162,10 +174,16 @@ impl App {
     }
 
     pub(super) fn copy_link(&mut self) -> Vec<Effect> {
-        match self.selected_link() {
-            Some(url) => vec![Effect::CopyLink(url)],
-            None => Vec::new(),
-        }
+        self.selected_commit()
+            .map_or_else(Vec::new, |card| Self::copy_link_of(&card))
+    }
+
+    pub(super) fn copy_link_of(card: &Commit) -> Vec<Effect> {
+        card.html_url
+            .clone()
+            .map(Effect::CopyLink)
+            .into_iter()
+            .collect()
     }
 
     pub(super) fn open_in_browser(&mut self) -> Vec<Effect> {
@@ -178,14 +196,16 @@ impl App {
             });
             return url.map(Effect::OpenUrl).into_iter().collect();
         }
-        self.selected_link()
+        self.selected_commit()
+            .map_or_else(Vec::new, |card| Self::open_link_of(&card))
+    }
+
+    pub(super) fn open_link_of(card: &Commit) -> Vec<Effect> {
+        card.html_url
+            .clone()
             .map(Effect::OpenUrl)
             .into_iter()
             .collect()
-    }
-
-    fn selected_link(&self) -> Option<String> {
-        self.selected_commit().and_then(|c| c.html_url)
     }
 
     /// Puts the answer of a star or a save in every copy.

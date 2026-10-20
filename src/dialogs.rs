@@ -41,3 +41,21 @@ pub struct ReportState {
     /// Why the last attempt was refused.
     pub error: Option<String>,
 }
+
+/// One line of the more menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MenuItem {
+    /// The key that runs the item, the same as on the card.
+    pub key: char,
+    pub label: &'static str,
+}
+
+/// An open more menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoreMenu {
+    pub id: String,
+    pub short_hash: String,
+    pub items: Vec<MenuItem>,
+    /// Index into `items`.
+    pub selected: usize,
+}

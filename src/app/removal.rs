@@ -70,6 +70,7 @@ impl App {
         match self.modal {
             Some(Modal::ConfirmDelete) => self.confirm = None,
             Some(Modal::Report) => self.report = None,
+            Some(Modal::Menu) => self.menu = None,
             _ => {}
         }
         self.modal = None;
@@ -78,11 +79,15 @@ impl App {
     /// Forgets the dialogs and everything that was out; the answers that follow find nothing.
     pub(super) fn forget_removals(&mut self) {
         self.confirm = None;
+        self.menu = None;
         self.report = None;
         self.deleting.clear();
         self.deleted.clear();
         self.reports.clear();
-        if matches!(self.modal, Some(Modal::ConfirmDelete | Modal::Report)) {
+        if matches!(
+            self.modal,
+            Some(Modal::ConfirmDelete | Modal::Report | Modal::Menu)
+        ) {
             self.modal = None;
         }
     }
@@ -93,9 +98,13 @@ impl App {
         if let Some(early) = self.session_gate() {
             return early;
         }
-        let Some(card) = self.selected_commit() else {
-            return Vec::new();
-        };
+        match self.selected_commit() {
+            Some(card) => self.open_delete_on(card),
+            None => Vec::new(),
+        }
+    }
+
+    pub(super) fn open_delete_on(&mut self, card: Commit) -> Vec<Effect> {
         if self.not_own(&card) || self.is_deleting(&card.id) {
             return Vec::new();
         }
