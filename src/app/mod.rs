@@ -81,6 +81,18 @@ pub enum Theme {
     Light,
 }
 
+/// Per-screen dispatch key, so each operation matches once instead of probing screens one by one.
+/// Matching `Screen` directly would not do: Log and Saved must share one `Feed(FeedKey)` arm, and the
+/// arms call `&mut self` methods, which needs an owned value detached from the borrow of `self.screen`.
+enum ScreenKind {
+    Feed(FeedKey),
+    Thread(String),
+    Profile(String),
+    Connections(String, ConnTab),
+    Notifications,
+    Settings,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
     Log(LogTab),
@@ -329,15 +341,9 @@ impl App {
                 effects.extend(self.select(0));
             }
             Action::SelectLast => effects.extend(self.select(usize::MAX)),
-            Action::OpenSelected if self.on_notifications() => {
-                effects.extend(self.notif_open_selected());
-            }
-            Action::ToggleReplies if self.on_notifications() => {
-                effects.extend(self.notif_toggle_group());
-            }
-            Action::OpenAuthor if self.on_notifications() => {
-                effects.extend(self.notif_open_author());
-            }
+            Action::OpenSelected => effects.extend(self.open_selected()),
+            Action::ToggleReplies => effects.extend(self.toggle_replies()),
+            Action::OpenAuthor => effects.extend(self.open_author()),
             Action::ToggleFilter(filter) => effects.extend(self.notif_toggle_filter(filter)),
             Action::ToggleAllFilters => effects.extend(self.notif_toggle_all_filters()),
             Action::SwitchSettingsTab(tab) => effects.extend(self.settings_switch_tab(tab)),
@@ -359,28 +365,6 @@ impl App {
             }
             Action::GroupLoaded { id, req, page } => self.apply_group_loaded(&id, req, page),
             Action::GroupFailed { id, req, code } => self.apply_group_failed(&id, req, code),
-            Action::OpenSelected if self.thread_id().is_some() => {
-                effects.extend(self.thread_open_selected());
-            }
-            Action::ToggleReplies if self.thread_id().is_some() => {
-                effects.extend(self.thread_toggle());
-            }
-            Action::OpenSelected if self.profile_name().is_some() => {
-                effects.extend(self.profile_open_selected());
-            }
-            Action::OpenSelected if self.conn_screen().is_some() => {
-                effects.extend(self.conn_open_selected());
-            }
-            Action::ToggleReplies if self.profile_name().is_some() => self.profile_toggle(),
-            Action::OpenSelected => {
-                let id = self
-                    .current_feed()
-                    .and_then(|f| f.items.get(f.selected))
-                    .map(|c| c.id.clone());
-                if let Some(id) = id {
-                    effects.extend(self.open(Screen::Thread(id)));
-                }
-            }
             Action::UserLoaded {
                 username,
                 req,
@@ -416,15 +400,9 @@ impl App {
                 req,
                 code,
             } => self.apply_conn_failed(&username, tab, req, code),
-            Action::OpenAuthor => effects.extend(self.open_author()),
             Action::OpenConnections(tab) => effects.extend(self.open_connections(tab)),
             Action::SwitchProfileTab(tab) => effects.extend(self.profile_switch_tab(tab)),
             Action::SwitchConnTab(tab) => effects.extend(self.conn_switch_tab(tab)),
-            Action::ToggleReplies => {
-                if let Some(key) = self.current_key() {
-                    self.feeds.entry(key).or_default().toggle_replies();
-                }
-            }
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
                 if let Some(state) = self.threads.get_mut(&id)
@@ -680,58 +658,112 @@ impl App {
         }
     }
 
+    fn kind(&self) -> ScreenKind {
+        match &self.screen {
+            Screen::Log(tab) => ScreenKind::Feed(FeedKey::Log(*tab)),
+            Screen::Saved => ScreenKind::Feed(FeedKey::Saved),
+            Screen::Thread(id) => ScreenKind::Thread(id.clone()),
+            Screen::Profile(name) => ScreenKind::Profile(name.clone()),
+            Screen::Connections(name, tab) => ScreenKind::Connections(name.clone(), *tab),
+            Screen::Notifications => ScreenKind::Notifications,
+            Screen::Settings => ScreenKind::Settings,
+        }
+    }
+
+    fn open_selected(&mut self) -> Vec<Effect> {
+        match self.kind() {
+            ScreenKind::Notifications => self.notif_open_selected(),
+            ScreenKind::Thread(_) => self.thread_open_selected(),
+            ScreenKind::Profile(_) => self.profile_open_selected(),
+            ScreenKind::Connections(..) => self.conn_open_selected(),
+            ScreenKind::Settings => Vec::new(),
+            ScreenKind::Feed(_) => {
+                let id = self
+                    .current_feed()
+                    .and_then(|f| f.items.get(f.selected))
+                    .map(|c| c.id.clone());
+                match id {
+                    Some(id) => self.open(Screen::Thread(id)),
+                    None => Vec::new(),
+                }
+            }
+        }
+    }
+
+    fn toggle_replies(&mut self) -> Vec<Effect> {
+        match self.kind() {
+            ScreenKind::Notifications => self.notif_toggle_group(),
+            ScreenKind::Thread(_) => self.thread_toggle(),
+            ScreenKind::Profile(_) => {
+                self.profile_toggle();
+                Vec::new()
+            }
+            ScreenKind::Feed(key) => {
+                self.feeds.entry(key).or_default().toggle_replies();
+                Vec::new()
+            }
+            ScreenKind::Connections(..) | ScreenKind::Settings => Vec::new(),
+        }
+    }
+
+    fn open_author(&mut self) -> Vec<Effect> {
+        match self.kind() {
+            ScreenKind::Notifications => self.notif_open_author(),
+            ScreenKind::Feed(_)
+            | ScreenKind::Thread(_)
+            | ScreenKind::Profile(_)
+            | ScreenKind::Connections(..)
+            | ScreenKind::Settings => self.feed_open_author(),
+        }
+    }
+
     fn entry_fetch(&mut self) -> Vec<Effect> {
-        if self.on_settings() {
-            return self.settings_entry();
-        }
-        if let Some(name) = self.profile_name() {
-            if self.profile(&name).is_some() {
-                return Vec::new();
+        match self.kind() {
+            ScreenKind::Settings => self.settings_entry(),
+            ScreenKind::Profile(name) => {
+                if self.profile(&name).is_some() {
+                    return Vec::new();
+                }
+                self.profile_requests(&name)
             }
-            return self.profile_requests(&name);
-        }
-        if let Some((name, tab)) = self.conn_screen() {
-            return self.conn_entry(&name, tab);
-        }
-        if let Some(id) = self.thread_id() {
-            if self.threads.contains_key(&id) {
-                return Vec::new();
+            ScreenKind::Connections(name, tab) => self.conn_entry(&name, tab),
+            ScreenKind::Thread(id) => {
+                if self.threads.contains_key(&id) {
+                    return Vec::new();
+                }
+                self.thread_requests(&id)
             }
-            return self.thread_requests(&id);
-        }
-        match self.fetchable_key() {
-            Some(key) if self.feeds[&key].needs_entry_fetch() => {
-                vec![self.request(key, None, false)]
-            }
-            _ => Vec::new(),
+            ScreenKind::Notifications => Vec::new(),
+            ScreenKind::Feed(_) => match self.fetchable_key() {
+                Some(key) if self.feeds[&key].needs_entry_fetch() => {
+                    vec![self.request(key, None, false)]
+                }
+                _ => Vec::new(),
+            },
         }
     }
 
     fn refresh(&mut self) -> Vec<Effect> {
-        if self.on_settings() {
-            return self.settings_refresh();
-        }
-        if let Some(name) = self.profile_name() {
-            return self.profile_refresh(&name);
-        }
-        if let Some((name, tab)) = self.conn_screen() {
-            return self.conn_refresh(&name, tab);
-        }
-        if let Some(id) = self.thread_id() {
-            if let Some(state) = self.threads.get_mut(&id) {
-                state.children.clear();
-                state.expanded.clear();
+        match self.kind() {
+            ScreenKind::Settings => self.settings_refresh(),
+            ScreenKind::Profile(name) => self.profile_refresh(&name),
+            ScreenKind::Connections(name, tab) => self.conn_refresh(&name, tab),
+            ScreenKind::Thread(id) => {
+                if let Some(state) = self.threads.get_mut(&id) {
+                    state.children.clear();
+                    state.expanded.clear();
+                }
+                self.thread_requests(&id)
             }
-            return self.thread_requests(&id);
+            ScreenKind::Notifications => vec![self.request_notifications(None, false)],
+            ScreenKind::Feed(_) => {
+                let Some(key) = self.fetchable_key() else {
+                    return Vec::new();
+                };
+                let (cursor, append) = self.feeds[&key].refresh_target();
+                vec![self.request(key, cursor, append)]
+            }
         }
-        if self.on_notifications() {
-            return vec![self.request_notifications(None, false)];
-        }
-        let Some(key) = self.fetchable_key() else {
-            return Vec::new();
-        };
-        let (cursor, append) = self.feeds[&key].refresh_target();
-        vec![self.request(key, cursor, append)]
     }
 
     fn prefetch(&mut self) -> Vec<Effect> {
@@ -745,52 +777,49 @@ impl App {
     }
 
     fn select(&mut self, index: usize) -> Vec<Effect> {
-        if self.on_notifications() {
-            return self.notif_select(index);
+        match self.kind() {
+            ScreenKind::Notifications => self.notif_select(index),
+            ScreenKind::Profile(name) => self.profile_select(&name, index),
+            ScreenKind::Connections(name, tab) => self.conn_select(&name, tab, index),
+            ScreenKind::Thread(id) => self.thread_select(&id, index),
+            ScreenKind::Settings => Vec::new(),
+            ScreenKind::Feed(key) => {
+                self.feeds.entry(key).or_default().select(index);
+                self.prefetch()
+            }
         }
-        if let Some(name) = self.profile_name() {
-            return self.profile_select(&name, index);
-        }
-        if let Some((name, tab)) = self.conn_screen() {
-            return self.conn_select(&name, tab, index);
-        }
-        if let Some(id) = self.thread_id() {
-            return self.thread_select(&id, index);
-        }
-        let Some(key) = self.current_key() else {
-            return Vec::new();
-        };
-        self.feeds.entry(key).or_default().select(index);
-        self.prefetch()
     }
 
     fn move_selection(&mut self, step: i32) -> Vec<Effect> {
-        if self.on_notifications() {
-            return self.notif_move(step);
+        match self.kind() {
+            ScreenKind::Notifications => self.notif_move(step),
+            ScreenKind::Profile(name) => {
+                let current = self.profile(&name).map_or(0, |s| s.selected());
+                self.profile_select(&name, current.saturating_add_signed(step as isize))
+            }
+            ScreenKind::Connections(name, tab) => {
+                let current = self.connections(&name, tab).map_or(0, |s| s.selected);
+                self.conn_select(&name, tab, current.saturating_add_signed(step as isize))
+            }
+            ScreenKind::Thread(id) => {
+                let current = self.threads.get(&id).map_or(0, |t| t.selected);
+                self.thread_select(&id, current.saturating_add_signed(step as isize))
+            }
+            ScreenKind::Settings => Vec::new(),
+            ScreenKind::Feed(key) => {
+                let feed = &self.feeds[&key];
+                // A failed append must not block this: the user asked for the newest items.
+                if step < 0
+                    && feed.selected == 0
+                    && feed.new_commits > 0
+                    && self.fetchable_key().is_some()
+                {
+                    return vec![self.request(key, None, false)];
+                }
+                let target = feed.selected.saturating_add_signed(step as isize);
+                self.select(target)
+            }
         }
-        if let Some(name) = self.profile_name() {
-            let current = self.profile(&name).map_or(0, |s| s.selected());
-            return self.profile_select(&name, current.saturating_add_signed(step as isize));
-        }
-        if let Some((name, tab)) = self.conn_screen() {
-            let current = self.connections(&name, tab).map_or(0, |s| s.selected);
-            return self.conn_select(&name, tab, current.saturating_add_signed(step as isize));
-        }
-        if let Some(id) = self.thread_id() {
-            let current = self.threads.get(&id).map_or(0, |t| t.selected);
-            return self.thread_select(&id, current.saturating_add_signed(step as isize));
-        }
-        let Some(key) = self.current_key() else {
-            return Vec::new();
-        };
-        let feed = &self.feeds[&key];
-        // A failed append must not block this: the user asked for the newest items.
-        if step < 0 && feed.selected == 0 && feed.new_commits > 0 && self.fetchable_key().is_some()
-        {
-            return vec![self.request(key, None, false)];
-        }
-        let target = feed.selected.saturating_add_signed(step as isize);
-        self.select(target)
     }
 
     fn poll(&mut self) -> Vec<Effect> {
@@ -809,24 +838,13 @@ impl App {
 
     /// Leaves the scroll alone when the size is unknown, since no row can be placed then.
     fn reconcile_scroll(&mut self) {
-        if self.on_notifications() {
-            self.reconcile_notifications_scroll();
-            return;
-        }
-        if let Some(name) = self.profile_name() {
-            self.reconcile_profile_scroll(&name);
-            return;
-        }
-        if let Some((name, tab)) = self.conn_screen() {
-            self.reconcile_conn_scroll(&name, tab);
-            return;
-        }
-        if let Some(id) = self.thread_id() {
-            self.reconcile_thread_scroll(&id);
-            return;
-        }
-        let Some(key) = self.current_key() else {
-            return;
+        let key = match self.kind() {
+            ScreenKind::Notifications => return self.reconcile_notifications_scroll(),
+            ScreenKind::Profile(name) => return self.reconcile_profile_scroll(&name),
+            ScreenKind::Connections(name, tab) => return self.reconcile_conn_scroll(&name, tab),
+            ScreenKind::Thread(id) => return self.reconcile_thread_scroll(&id),
+            ScreenKind::Settings => return,
+            ScreenKind::Feed(key) => key,
         };
         let Some(main) = self.main_area() else {
             return;

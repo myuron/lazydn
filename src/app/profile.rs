@@ -270,7 +270,7 @@ impl App {
         }
     }
 
-    pub(super) fn open_author(&mut self) -> Vec<Effect> {
+    pub(super) fn feed_open_author(&mut self) -> Vec<Effect> {
         let Some(author) = self.selected_author() else {
             return Vec::new();
         };
