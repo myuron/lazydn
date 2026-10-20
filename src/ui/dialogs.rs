@@ -52,6 +52,30 @@ pub fn render_confirm(confirm: &DeleteConfirm, frame: &mut Frame) {
     frame_of(frame, rect, " Revert commit ".to_string(), rows);
 }
 
+const BLOCK_WIDTH: u16 = 58;
+
+/// Pads on the left so that the text sits in the middle of `width` columns.
+fn centered_text(text: &str, width: usize) -> String {
+    format!(
+        "{}{text}",
+        " ".repeat(width.saturating_sub(text.width()) / 2)
+    )
+}
+
+pub fn render_block_confirm(username: &str, frame: &mut Frame) {
+    let name = clean_inline(username);
+    let rows = vec![
+        String::new(),
+        format!(" Block @{name}?"),
+        " They won't be able to follow you or see your commits.".to_string(),
+        String::new(),
+        centered_text("[y] Block  [n] Cancel", usize::from(BLOCK_WIDTH) - 2),
+        String::new(),
+    ];
+    let rect = centered(frame.area(), BLOCK_WIDTH, 8);
+    frame_of(frame, rect, " Block user ".to_string(), rows);
+}
+
 pub fn render_report(report: &ReportState, frame: &mut Frame) {
     let (text_rows, cursor, top) = field_rows(report);
     let shown: Vec<String> = text_rows

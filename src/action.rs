@@ -6,6 +6,7 @@ use crate::api::pkce::Pkce;
 use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
 use crate::drafts::Drafts;
 use crate::feed::{FeedKey, FeedPage, ReqId};
+use crate::model::{BlockResponse, MuteResponse};
 use crate::model::{
     Commit, GroupPage, MeResponse, NotificationsPage, Page, PastelResponse, ReportReason,
     ThreadItem, ThreadResponse, User, UserResponse,
@@ -371,6 +372,52 @@ pub enum Action {
         req: ReqId,
         failure: Failure,
     },
+    /// `f`: follows or unfollows the profile owner, or the person on the selected row of Followers / Following.
+    ToggleFollow,
+    /// `m`: mutes or unmutes the profile owner.
+    ToggleMute,
+    /// `B`: asks whether to block the profile owner, or unblocks them when the profile shows a block.
+    Block,
+    /// `y` in the block confirmation: blocks the person.
+    ConfirmBlock,
+    /// The server took the follow (`on`) or the unfollow; it answers with no body.
+    FollowDone {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    FollowFailed {
+        username: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server muted (`on`) or unmuted; only `is_muting` of the response is used.
+    MuteDone {
+        username: String,
+        on: bool,
+        req: ReqId,
+        response: Box<MuteResponse>,
+    },
+    MuteFailed {
+        username: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server blocked (`on`) or unblocked; only `is_blocking` of the response is used.
+    BlockDone {
+        username: String,
+        on: bool,
+        req: ReqId,
+        response: Box<BlockResponse>,
+    },
+    BlockFailed {
+        username: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
     /// The write of the drafts failed, so they are still unsaved.
     DraftsSaveFailed,
     /// The drafts of `account` read from disk; they fill only the slots that hold no text yet.
@@ -501,6 +548,24 @@ pub enum Effect {
         id: String,
         reason: ReportReason,
         details: Option<String>,
+        req: ReqId,
+    },
+    /// Follows (`on`) or unfollows the user.
+    FollowUser {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Mutes (`on`) or unmutes the user.
+    MuteUser {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Blocks (`on`) or unblocks the user.
+    BlockUser {
+        username: String,
+        on: bool,
         req: ReqId,
     },
     /// Writes the drafts of `account` to disk. The runtime does it on the spot, not on a task.

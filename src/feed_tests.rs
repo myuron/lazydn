@@ -120,6 +120,9 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::GivePastel { .. }
         | Effect::DeleteCommit { .. }
         | Effect::ReportCommit { .. }
+        | Effect::FollowUser { .. }
+        | Effect::MuteUser { .. }
+        | Effect::BlockUser { .. }
         | Effect::CopyLink(_)
         | Effect::Quit => None,
     }

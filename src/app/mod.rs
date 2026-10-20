@@ -9,6 +9,7 @@ mod key_status;
 mod last_visit;
 mod menu;
 mod notifications;
+mod people;
 mod profile;
 mod removal;
 mod report;
@@ -146,6 +147,8 @@ pub enum Modal {
     Report,
     /// The list of everything that can be done to the selected card.
     Menu,
+    /// Waiting for `y` or `n` before a block.
+    ConfirmBlock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -268,6 +271,10 @@ pub struct App {
     deleted: HashMap<String, settle::Fate>,
     /// The reports that are out, by commit, with the hash the toast names.
     reports: HashMap<String, (ReqId, String)>,
+    /// The follow, mute and block requests that are out, by kind and lowercased username.
+    user_writes: HashMap<(people::UserWriteKind, String), ReqId>,
+    /// The person the block waits for `y` about.
+    block_confirm: Option<String>,
 }
 
 impl App {
@@ -348,6 +355,8 @@ impl App {
             deleting: HashMap::new(),
             deleted: HashMap::new(),
             reports: HashMap::new(),
+            user_writes: HashMap::new(),
+            block_confirm: None,
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
             let text = toast::key_error_text(error, path);
@@ -625,6 +634,47 @@ impl App {
             Action::CommitFailed { req, failure } => self.commit_failed(req, &failure),
             Action::DraftsLoaded { account, drafts } => self.drafts_loaded(&account, drafts),
             Action::DraftsSaveFailed => self.drafts_unsaved = true,
+            Action::ToggleFollow => effects.extend(self.toggle_follow()),
+            Action::ToggleMute => effects.extend(self.toggle_mute()),
+            Action::Block => effects.extend(self.block_key()),
+            Action::ConfirmBlock => effects.extend(self.confirm_block()),
+            Action::FollowDone { username, req, .. } => self.follow_done(&username, req),
+            Action::FollowFailed {
+                username,
+                on,
+                req,
+                failure,
+            } => self.follow_failed(&username, on, req, &failure),
+            Action::MuteDone {
+                username,
+                req,
+                response,
+                ..
+            } => self.mute_done(&username, req, response.is_muting),
+            Action::MuteFailed {
+                username,
+                on,
+                req,
+                failure,
+            } => self.mute_failed(&username, on, req, &failure),
+            Action::BlockDone {
+                username,
+                on,
+                req,
+                response,
+            } => effects.extend(self.block_done(
+                &username,
+                on,
+                req,
+                response.is_blocking,
+                response.data,
+            )),
+            Action::BlockFailed {
+                username,
+                req,
+                failure,
+                ..
+            } => self.block_failed(&username, req, &failure),
             Action::OpenMenu => effects.extend(self.open_menu()),
             Action::MenuKey(key) => effects.extend(self.on_menu_key(key)),
             Action::Delete => effects.extend(self.open_delete()),

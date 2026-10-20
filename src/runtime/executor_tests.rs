@@ -1938,3 +1938,282 @@ async fn a_delete_refused_without_an_api_code_is_named_after_the_status() {
         );
     }
 }
+
+// --- 8. follow, mute and block ------------------------------------------------------------------
+
+const ALICE: &str =
+    r#"{"id":"user-alice","username":"alice","name":"Alice","created_at":"2026-10-01T00:00:00Z"}"#;
+
+fn follow_effect(on: bool) -> Effect {
+    Effect::FollowUser {
+        username: "alice".into(),
+        on,
+        req: REQ,
+    }
+}
+
+fn mute_effect(on: bool) -> Effect {
+    Effect::MuteUser {
+        username: "alice".into(),
+        on,
+        req: REQ,
+    }
+}
+
+fn block_effect(on: bool) -> Effect {
+    Effect::BlockUser {
+        username: "alice".into(),
+        on,
+        req: REQ,
+    }
+}
+
+fn user_writes() -> Vec<Effect> {
+    vec![
+        follow_effect(true),
+        follow_effect(false),
+        mute_effect(true),
+        mute_effect(false),
+        block_effect(true),
+        block_effect(false),
+    ]
+}
+
+/// The verb and the path an effect calls.
+fn user_write_call(effect: &Effect) -> (&'static str, &'static str) {
+    match effect {
+        Effect::FollowUser { on: true, .. } => ("POST", "/api/v1/users/alice/follow"),
+        Effect::FollowUser { on: false, .. } => ("DELETE", "/api/v1/users/alice/follow"),
+        Effect::MuteUser { on: true, .. } => ("POST", "/api/v1/users/alice/mute"),
+        Effect::MuteUser { on: false, .. } => ("DELETE", "/api/v1/users/alice/mute"),
+        Effect::BlockUser { on: true, .. } => ("POST", "/api/v1/users/alice/block"),
+        Effect::BlockUser { on: false, .. } => ("DELETE", "/api/v1/users/alice/block"),
+        other => panic!("not a follow, mute or block: {other:?}"),
+    }
+}
+
+fn failed_user_write(effect: &Effect, failure: Failure) -> Action {
+    match effect {
+        Effect::FollowUser { username, on, req } => Action::FollowFailed {
+            username: username.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::MuteUser { username, on, req } => Action::MuteFailed {
+            username: username.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::BlockUser { username, on, req } => Action::BlockFailed {
+            username: username.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        other => panic!("not a follow, mute or block: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_follow_posts_and_an_unfollow_deletes_and_both_answer_with_the_request() {
+    for on in [true, false] {
+        let effect = follow_effect(on);
+        let (verb, p) = user_write_call(&effect);
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, no_content()).await;
+
+        let (results, status) = split(execute(&signed(&server), effect).await);
+
+        assert_eq!(
+            results,
+            vec![Action::FollowDone {
+                username: "alice".into(),
+                on,
+                req: REQ,
+            }],
+            "{verb}"
+        );
+        assert_eq!(status, vec![ONLINE], "{verb}");
+        assert_eq!(received(&server).await.len(), 1, "{verb}");
+    }
+}
+
+#[tokio::test]
+async fn a_mute_posts_and_an_unmute_deletes_and_both_answer_with_the_user_and_the_flag() {
+    for on in [true, false] {
+        let effect = mute_effect(on);
+        let (verb, p) = user_write_call(&effect);
+        let body = format!(r#"{{"data":{ALICE},"is_muting":{on}}}"#);
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, json(&body)).await;
+
+        let (results, status) = split(execute(&signed(&server), effect).await);
+
+        assert_eq!(
+            results,
+            vec![Action::MuteDone {
+                username: "alice".into(),
+                on,
+                req: REQ,
+                response: Box::new(parse(&body)),
+            }],
+            "{verb}"
+        );
+        assert_eq!(status, vec![ONLINE], "{verb}");
+        assert_eq!(received(&server).await.len(), 1, "{verb}");
+    }
+}
+
+#[tokio::test]
+async fn a_block_posts_and_an_unblock_deletes_and_both_answer_with_the_user_and_the_flag() {
+    for on in [true, false] {
+        let effect = block_effect(on);
+        let (verb, p) = user_write_call(&effect);
+        let body = format!(r#"{{"data":{ALICE},"is_blocking":{on}}}"#);
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, json(&body)).await;
+
+        let (results, status) = split(execute(&signed(&server), effect).await);
+
+        assert_eq!(
+            results,
+            vec![Action::BlockDone {
+                username: "alice".into(),
+                on,
+                req: REQ,
+                response: Box::new(parse(&body)),
+            }],
+            "{verb}"
+        );
+        assert_eq!(status, vec![ONLINE], "{verb}");
+        assert_eq!(received(&server).await.len(), 1, "{verb}");
+    }
+}
+
+#[tokio::test]
+async fn a_refused_follow_mute_or_block_carries_the_code_and_the_message_of_the_server() {
+    let cases = [(404, "user_unavailable"), (422, "validation_failed")];
+    for effect in user_writes() {
+        for (status, code) in cases {
+            let (verb, p) = user_write_call(&effect);
+            let server = MockServer::start().await;
+            serve_method(&server, verb, p, error_body(status, code)).await;
+
+            let (results, online) = split(execute(&signed(&server), effect.clone()).await);
+
+            let failure = Failure {
+                code: code.into(),
+                retry_after: None,
+                message: Some("m".into()),
+            };
+            assert_eq!(
+                results,
+                vec![failed_user_write(&effect, failure)],
+                "{effect:?} {status}"
+            );
+            assert_eq!(online, vec![ONLINE], "{effect:?} {status}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_follow_mute_or_block_refused_without_an_api_code_is_named_after_the_status() {
+    for effect in user_writes() {
+        let (verb, p) = user_write_call(&effect);
+        let server = MockServer::start().await;
+        let body = serde_json::json!({ "message": "This action is unauthorized." }).to_string();
+        let response =
+            ResponseTemplate::new(403).set_body_raw(body.into_bytes(), "application/json");
+        serve_method(&server, verb, p, response).await;
+
+        let (results, _) = split(execute(&signed(&server), effect.clone()).await);
+
+        let failure = Failure {
+            code: "http_403".into(),
+            retry_after: None,
+            message: Some("This action is unauthorized.".into()),
+        };
+        assert_eq!(
+            results,
+            vec![failed_user_write(&effect, failure)],
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_rate_limited_follow_mute_or_block_carries_retry_after() {
+    for effect in user_writes() {
+        let (verb, p) = user_write_call(&effect);
+        let server = MockServer::start().await;
+        serve_method(
+            &server,
+            verb,
+            p,
+            error_body(429, "rate_limited").insert_header("Retry-After", "9"),
+        )
+        .await;
+
+        let (results, _) = split(execute(&signed(&server), effect.clone()).await);
+
+        let failure = Failure {
+            code: "rate_limited".into(),
+            retry_after: Some(9),
+            message: Some("m".into()),
+        };
+        assert_eq!(
+            results,
+            vec![failed_user_write(&effect, failure)],
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_follow_mute_or_block_that_cannot_reach_the_server_fails_as_network() {
+    for effect in user_writes() {
+        let actions = execute(&unreachable_client(), effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![
+                failed_user_write(&effect, Failure::new("network")),
+                Action::ApiStatus {
+                    rate: None,
+                    online: false
+                }
+            ],
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_guest_can_neither_follow_mute_nor_block_and_nothing_is_sent() {
+    let server = MockServer::start().await;
+    let guest = client_for(&server.uri(), false);
+
+    for effect in user_writes() {
+        let actions = execute(&guest, effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![failed_user_write(&effect, Failure::new("sign_in_required"))],
+            "{effect:?}"
+        );
+    }
+    assert!(received(&server).await.is_empty());
+}
+
+#[test]
+fn a_panicked_follow_mute_or_block_fails_into_its_failed_action_with_the_req() {
+    for effect in user_writes() {
+        assert_eq!(
+            failure_for(&effect, "panic"),
+            Some(failed_user_write(&effect, Failure::new("panic"))),
+            "{effect:?}"
+        );
+    }
+}

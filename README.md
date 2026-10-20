@@ -74,6 +74,9 @@ Drafts are saved about two seconds after you stop typing, and at once when you c
 | `.` | More menu of the selected commit: every action that applies to it (`j` / `k` choose, `Enter` or the action's key runs it, `Esc` closes) |
 | `d` | Delete your own commit, after a confirmation (`y` deletes, `n` or `Esc` cancels) |
 | `!` | Report the selected commit (not your own): `j` / `k` choose the reason, `Tab` moves to the details, `Enter` sends |
+| `f` | Follow or unfollow the person on a profile, or on the selected row of Followers / Following |
+| `m` | Mute or unmute the person on a profile |
+| `B` | Block the person on a profile, after a confirmation (`y` blocks, `n` or `Esc` cancels); on a blocked profile, unblock |
 | `?` | Help |
 | `Q` | Quit |
 

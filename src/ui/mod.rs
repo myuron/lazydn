@@ -69,6 +69,11 @@ pub fn draw(app: &App, frame: &mut Frame) {
                 dialogs::render_menu(menu, app.prefs().truecolor, frame);
             }
         }
+        Some(Modal::ConfirmBlock) => {
+            if let Some(username) = app.block_confirm() {
+                dialogs::render_block_confirm(username, frame);
+            }
+        }
         None => {}
     }
     toast::render(app, frame, area, panes.status);
@@ -80,6 +85,8 @@ mod card_tests;
 mod compose_tests;
 #[cfg(test)]
 mod feed_tests;
+#[cfg(test)]
+mod follow_tests;
 #[cfg(test)]
 mod menu_tests;
 #[cfg(test)]

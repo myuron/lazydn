@@ -64,6 +64,7 @@ impl App {
         self.focus = Pane::Main;
         self.writes.clear();
         self.forget_removals();
+        self.forget_user_writes();
         self.forget_composer_state();
     }
 

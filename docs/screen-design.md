@@ -379,6 +379,12 @@ Nav の Profile（`g p`）か、カードを選んで `@` を押すと開きま�
 | 一覧 | 先頭に、ピン留めした commit を `⚲ Pinned` の見出し付きで表示します |
 
 - Web 版にあるアクティビティグラフ、streak、実績、レベル表示は、API がないので載せません。
+- `f` は楽観的に切り替えます。ヘッダーの文言、followers の数、自分の following の数（Aside と自分のプロフィール）を先に変え、サーバーが拒んだら元に戻します。`is_following` が無いプロフィールは「フォローしていない」として扱います。応答は本文がない（204）ので、何も差し替えません。
+- `m` も楽観的に切り替え（`[Muted]` のバッジと `[m] Unmute`）、応答の `is_muting` だけを使います。ミュートしても、一覧の commit はその場では消さず、次の読み込みで反映します。
+- `B` は確認のダイアログ（`Block @x?` / `They won't be able to follow you or see your commits.` / `[y] Block  [n] Cancel`）を出します。成功すると、プロフィールを下記のブロックの表示に切り替え、フォローを双方向とも外します（自分の following は、フォローしていたときに 1 減り、followers は、相手がフォローしていたときに 1 減ります）。Followers / Following の行の `[Following]` も外します。Log の各タブ（commit と suggestions）と Saved からは、その人の commit を除きます（選択は、除いた後も同じ commit に残るか、その位置に来た次の commit に移ります）。ほかの画面（他人の Profile、Thread、返信プレビュー、Notifications）は、次の読み込みで反映します。
+- ブロックした相手のプロフィールで `B` を押すと、確認なしでブロックを解除し、プロフィールを読み込み直します。解除してもフォローは戻りません。
+- 同じ相手への同じ種類の操作は、応答が返るまで受け付けません。ブロックが飛んでいる間は、その相手への `f` / `m` も受け付けません。ブロックを解除した後は、プロフィールの読み込み直しが終わるまで `B` を受け付けません。自分のプロフィール、読み込み中・利用できないプロフィール、ブロックした相手のプロフィールでは、`f` / `m` は何もしません。ゲストは `f` / `m` / `B` でサインインのダイアログが開きます。
+- mute / unmute / block / unblock が成功したら、Settings の Safety は次に開いたときに一覧を読み込み直します。
 - ブロックした相手のプロフィール（`403 user_blocked`）では、ヘッダーだけを表示し、本文の位置に `You blocked @x. [B] Unblock` と表示します。ブロックされているとき（`403 user_unavailable`）は、`fatal: @x is not available` と表示します。
 
 使う API: `GET /v1/users/{username}`、`GET /v1/users/{username}/commits`、`POST|DELETE /v1/users/{username}/follow|mute|block`
@@ -399,7 +405,7 @@ Nav の Profile（`g p`）か、カードを選んで `@` を押すと開きま�
 ```
 
 - `1` と `2` でタブを切り替えます。このタブの切り替えは履歴に積まず、画面を置き換えるので、`Esc` で Profile に戻ります。1 ページは 30 件です。
-- サインインしているときは、各行に `[Follows you]` と、フォロー状態のボタン（`[Following]` / `[ Follow ]`）を表示します。`f` でフォローを切り替え、`Enter` でその人のプロフィールを開きます。
+- サインインしているときは、各行に `[Follows you]` と、フォロー状態のボタン（`[Following]` / `[ Follow ]`）を表示します。`f` で選んだ行の人のフォローを切り替え、`Enter` でその人のプロフィールを開きます。自分の行と、`is_followed` が無い行（ボタンを出さない行）では、`f` は何もしません（プロフィールでは `is_following` が無いと「フォローしていない」として扱うので、扱いが異なります）。同じ人のプロフィール、もう一方のタブの行、自分の following の数にも、すぐ反映します。
 
 使う API: `GET /v1/users/{username}/followers`、`GET /v1/users/{username}/following`
 
@@ -819,6 +825,8 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `1`〜`3` | タブの切り替え | Log、Settings | 追加 |
 | `1` / `2` | タブの切り替え（Profile は Commits / Replies、Followers / Following は Followers / Following） | Profile、Followers / Following | 追加 |
 | `3` / `4` | Followers / Following を開く | Profile | 追加 |
+| `f` | フォロー / フォロー解除 | Profile、Followers / Following | 追加 |
+| `m` / `B` | ミュート / ブロック（確認あり）。ブロックした相手では `B` で解除 | Profile | 追加 |
 | `@` | 選択中のカードの作者のプロフィールを開く | 一覧、Thread、Profile の一覧 | 追加 |
 | `1`〜`6`、`a` | フィルターの切り替え | Notifications | 追加 |
 | `s` | star（自分の commit には付けられません） | カード | 追加 |

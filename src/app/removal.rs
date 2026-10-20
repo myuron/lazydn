@@ -21,7 +21,7 @@ fn remove_from(items: &mut Vec<Commit>, selected: &mut usize, id: &str) {
     *selected = (*selected - before).min(items.len().saturating_sub(1));
 }
 
-fn remove_from_feed(feed: &mut Feed, id: &str) {
+pub(super) fn remove_from_feed(feed: &mut Feed, id: &str) {
     remove_from(&mut feed.items, &mut feed.selected, id);
     feed.suggestions.retain(|c| c.id != id);
     feed.expanded.remove(id);
@@ -71,6 +71,7 @@ impl App {
             Some(Modal::ConfirmDelete) => self.confirm = None,
             Some(Modal::Report) => self.report = None,
             Some(Modal::Menu) => self.menu = None,
+            Some(Modal::ConfirmBlock) => self.close_block_confirm(),
             _ => {}
         }
         self.modal = None;

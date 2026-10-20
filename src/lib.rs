@@ -39,6 +39,8 @@ mod editor_tests;
 #[cfg(test)]
 mod feed_tests;
 #[cfg(test)]
+mod follow_tests;
+#[cfg(test)]
 mod keyboard_tests;
 #[cfg(test)]
 mod keymap_tests;

@@ -1,0 +1,28 @@
+---
+source: src/ui/follow_tests.rs
+expression: terminal.backend()
+---
+"┌──┐┏ @alice ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"│  │┃              Followers                            Following              ┃"
+"│ ◉│┃                                                   ━━━━━━━━━              ┃"
+"│ ◎│┃                                                                          ┃"
+"│ ◯│┃ ◉ Bob @bob  [Follows you]                                    [Following] ┃"
+"│ ⊡│┃   coffee-driven developer                                                ┃"
+"│ ⚙│┃▌◉ Carol @carol                                               [Following] ┃"
+"│  │┃▌  ssh enthusiast                                                         ┃"
+"│ +│┃ ◉ Dave @dave  [Follows you]                                   [ Follow ] ┃"
+"│  │┃ ◉ Myuron @myuron                                                         ┃"
+"│  │┃   that is me                                                             ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" Profile > Following  j/k move  ↵ open  c commit  ? help                    -/- "

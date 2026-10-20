@@ -78,6 +78,53 @@ async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
         | Effect::CopyLink(_) => return None,
+        Effect::FollowUser { username, on, req } => {
+            let answer = if *on {
+                client.follow(username).await
+            } else {
+                client.unfollow(username).await
+            };
+            answer.map(|r| {
+                let action = Action::FollowDone {
+                    username: username.clone(),
+                    on: *on,
+                    req: *req,
+                };
+                (action, r.rate)
+            })
+        }
+        Effect::MuteUser { username, on, req } => {
+            let answer = if *on {
+                client.mute(username).await
+            } else {
+                client.unmute(username).await
+            };
+            answer.map(|r| {
+                let action = Action::MuteDone {
+                    username: username.clone(),
+                    on: *on,
+                    req: *req,
+                    response: Box::new(r.data),
+                };
+                (action, r.rate)
+            })
+        }
+        Effect::BlockUser { username, on, req } => {
+            let answer = if *on {
+                client.block(username).await
+            } else {
+                client.unblock(username).await
+            };
+            answer.map(|r| {
+                let action = Action::BlockDone {
+                    username: username.clone(),
+                    on: *on,
+                    req: *req,
+                    response: Box::new(r.data),
+                };
+                (action, r.rate)
+            })
+        }
         Effect::DeleteCommit { id, req } => client.delete_commit(id).await.map(|r| {
             let action = Action::DeleteDone {
                 id: id.clone(),
@@ -392,6 +439,24 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
         | Effect::CopyLink(_) => return None,
+        Effect::FollowUser { username, on, req } => Action::FollowFailed {
+            username: username.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::MuteUser { username, on, req } => Action::MuteFailed {
+            username: username.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::BlockUser { username, on, req } => Action::BlockFailed {
+            username: username.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
         Effect::DeleteCommit { id, req } => Action::DeleteFailed {
             id: id.clone(),
             req: *req,

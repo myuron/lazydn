@@ -51,7 +51,7 @@ fn map_sign_in_key(key: KeyEvent) -> Option<Action> {
 }
 
 /// The confirmation reads `y`, `n`, Esc and Ctrl+C; every other key is ignored so that nothing slips past it.
-fn map_confirm_key(key: KeyEvent) -> Option<Action> {
+fn map_confirm_key(key: KeyEvent, yes: Action) -> Option<Action> {
     if key.kind != KeyEventKind::Press {
         return None;
     }
@@ -59,7 +59,7 @@ fn map_confirm_key(key: KeyEvent) -> Option<Action> {
         return (key.code == KeyCode::Char('c')).then_some(Action::Quit);
     }
     match key.code {
-        KeyCode::Char('y') => Some(Action::ConfirmDelete),
+        KeyCode::Char('y') => Some(yes),
         KeyCode::Char('n') | KeyCode::Esc => Some(Action::CloseModal),
         _ => None,
     }
@@ -128,7 +128,8 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
         return map_composer_key(key).map(Action::Compose);
     }
     match app.modal() {
-        Some(Modal::ConfirmDelete) => return map_confirm_key(key),
+        Some(Modal::ConfirmDelete) => return map_confirm_key(key, Action::ConfirmDelete),
+        Some(Modal::ConfirmBlock) => return map_confirm_key(key, Action::ConfirmBlock),
         Some(Modal::Report) => return map_report_key(app, key),
         Some(Modal::Menu) => return map_menu_key(app, key),
         _ => {}
@@ -256,6 +257,15 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('d') if commit_cards => Some(Action::Delete),
             KeyCode::Char('!') if commit_cards => Some(Action::Report),
             KeyCode::Char('.') if commit_cards => Some(Action::OpenMenu),
+            KeyCode::Char('f')
+                if matches!(app.screen(), Screen::Profile(_) | Screen::Connections(..)) =>
+            {
+                Some(Action::ToggleFollow)
+            }
+            KeyCode::Char('m') if matches!(app.screen(), Screen::Profile(_)) => {
+                Some(Action::ToggleMute)
+            }
+            KeyCode::Char('B') if matches!(app.screen(), Screen::Profile(_)) => Some(Action::Block),
             KeyCode::Char('@') if !matches!(app.screen(), Screen::Connections(..)) => {
                 Some(Action::OpenAuthor)
             }
