@@ -1,0 +1,15 @@
+[package]
+name = "lazydn"
+version = "0.1.0"
+edition = "2024"
+description = "A terminal UI application"
+license = "MIT"
+repository = "https://github.com/myuron/lazydn"
+
+[dependencies]
+color-eyre = "0.6.5"
+crossterm = "0.29.0"
+ratatui = "0.30.2"
+
+[dev-dependencies]
+insta = "1.49.0"
