@@ -3,12 +3,14 @@ use ratatui::text::{Line, Span};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::{App, ConnState, LogTab, Session};
+use crate::compose::Surface;
 use crate::feed::{Feed, FeedKey, LoadState};
 use crate::model::{Commit, ThreadItem};
 use crate::timefmt::day_label;
 use crate::ui::card::{
-    CardInput, CardOptions, Node, Prefix, RenderCtx, apply_selection, card_lines,
+    CardInput, CardOptions, Node, Prefix, RenderCtx, apply_selection, body_lead, card_lines,
 };
+use crate::ui::compose::reply_box;
 use crate::ui::theme;
 
 /// Where one card sits inside [`FeedRows::lines`].
@@ -29,6 +31,15 @@ pub fn card_extent(cards: &[CardSpan], index: usize, lines: usize) -> Option<(us
     Some((card.start, height))
 }
 
+/// Where a reply box sits among the rows its card returned.
+#[derive(Debug, Clone, Copy)]
+pub struct BoxPlace {
+    /// Row and column of the cursor.
+    pub cursor: (usize, usize),
+    /// The last row of the box.
+    pub end: usize,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FeedRows {
     pub lines: Vec<Line<'static>>,
@@ -36,6 +47,8 @@ pub struct FeedRows {
     pub cards: Vec<CardSpan>,
     /// Where the terminal cursor goes, as (row of `lines`, column), while a composer on this list has the focus.
     pub cursor: Option<(usize, usize)>,
+    /// The last row of that box.
+    pub box_end: Option<usize>,
 }
 
 pub fn render_ctx(app: &App) -> RenderCtx {
@@ -149,9 +162,12 @@ fn new_commits_banner(count: u32, width: usize) -> Line<'static> {
 
 /// What the row builders share, so that suggestions and listed cards are drawn alike.
 pub(crate) struct Env<'a> {
+    pub app: &'a App,
     pub ctx: RenderCtx,
     pub own: Option<&'a str>,
     pub width: usize,
+    /// Where the reply box of the last card drew itself, in the rows that card returned.
+    pub placed: std::cell::Cell<Option<BoxPlace>>,
 }
 
 impl Env<'_> {
@@ -172,6 +188,7 @@ impl Env<'_> {
                 Some(ThreadItem::Commit(p)) => Some(p.author.username.clone()),
                 _ => None,
             },
+            has_draft: self.app.drafts().has_reply(&commit.id),
             ..CardOptions::default()
         };
         let mut card = card_lines(
@@ -186,6 +203,17 @@ impl Env<'_> {
         }
         let mut rows = vec![rail(commit, &self.ctx, self.width)];
         rows.extend(card);
+        if let Some(compose) = self.app.compose().filter(|c| {
+            c.surface == Surface::ReplyBox && c.key.reply_to() == Some(commit.id.as_str())
+        }) {
+            let lead = body_lead(commit, &opts, &self.ctx, &Prefix::default());
+            let (boxed, cursor) = reply_box(self.app, compose, &lead, usize::from(card_w));
+            self.placed.set(Some(BoxPlace {
+                cursor: (rows.len() + cursor.0, cursor.1),
+                end: rows.len() + boxed.len() - 1,
+            }));
+            rows.extend(boxed);
+        }
         rows
     }
 }
@@ -197,9 +225,11 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
         Session::Guest | Session::Restoring => None,
     };
     let env = Env {
+        app,
         ctx: render_ctx(app),
         own,
         width: usize::from(width),
+        placed: std::cell::Cell::new(None),
     };
     let w = env.width;
     let is_log = matches!(key, FeedKey::Log(_));
@@ -272,6 +302,10 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
             start: out.lines.len() + 1,
             height: rows.len() - 1,
         });
+        if let Some(place) = env.placed.take() {
+            out.cursor = Some((out.lines.len() + place.cursor.0, place.cursor.1));
+            out.box_end = Some(out.lines.len() + place.end);
+        }
         out.lines.extend(rows);
         previous = Some(commit);
     }

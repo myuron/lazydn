@@ -32,6 +32,16 @@ pub enum DraftKey {
     Quote(String),
 }
 
+impl DraftKey {
+    /// The id of the commit that this draft replies to.
+    pub fn reply_to(&self) -> Option<&str> {
+        match self {
+            Self::Reply(id) => Some(id),
+            Self::New | Self::Quote(_) => None,
+        }
+    }
+}
+
 /// The drafts of the signed-in account, oldest first; an empty editor is never kept.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Drafts {
@@ -42,6 +52,11 @@ impl Drafts {
     /// The editor of `key`, if it holds text.
     pub fn get(&self, key: &DraftKey) -> Option<&Editor> {
         self.entries.iter().find(|(k, _)| k == key).map(|(_, e)| e)
+    }
+
+    /// Whether a reply to the commit `id` is being written.
+    pub fn has_reply(&self, id: &str) -> bool {
+        self.entries.iter().any(|(k, _)| k.reply_to() == Some(id))
     }
 
     /// The text of `key`, if it holds any.

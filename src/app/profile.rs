@@ -1,6 +1,8 @@
 use super::{App, ConnTab, NavItem, ProfileTab, Screen, Session};
 use crate::action::Effect;
-use crate::feed::{FeedPage, LoadState, Pending, ReqId, near_end, settle_scroll};
+use crate::feed::{
+    FeedPage, LoadState, Pending, ReqId, box_span, near_end, settle_card_scroll, settle_scroll,
+};
 use crate::model::{Page, ThreadItem, User, UserResponse};
 use crate::profile::ConnectionsState;
 use crate::thread::Entry;
@@ -36,7 +38,7 @@ impl App {
         }
     }
 
-    fn signed_in(&self) -> bool {
+    pub(super) fn signed_in(&self) -> bool {
         !self.is_guest()
     }
 
@@ -215,7 +217,7 @@ impl App {
         self.open(Screen::Thread(id))
     }
 
-    fn profile_selected_commit(&self) -> Option<crate::model::Commit> {
+    pub(super) fn profile_selected_commit(&self) -> Option<crate::model::Commit> {
         let name = self.profile_name()?;
         let state = self.profile(&name).filter(|s| s.shows_list())?;
         state
@@ -467,8 +469,11 @@ impl App {
         let view = main.height.saturating_sub(2) as usize;
         let rows = crate::ui::profile::rows(self, name, main.width.saturating_sub(2));
         let total = rows.lines.len();
+        let boxed = box_span(rows.cursor, rows.box_end);
         let wanted = match crate::ui::feed::card_extent(&rows.cards, selected, total) {
-            Some(extent) if selected > 0 => settle_scroll(extent, total, scroll, view),
+            Some(extent) if selected > 0 || boxed.is_some() => {
+                settle_card_scroll(extent, boxed, total, scroll, view)
+            }
             _ => 0,
         };
         if let Some(state) = self.profiles.get_mut(&name.to_ascii_lowercase()) {

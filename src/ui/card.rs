@@ -72,6 +72,7 @@ pub struct Prefix {
     pub rest: Vec<Span<'static>>,
 }
 
+const QUOTE_BODY_ROWS: usize = 3;
 const FOLD_CHARS: usize = 280;
 const FOLD_LINES: usize = 8;
 const TAB_AS_SPACES: &str = "    ";
@@ -485,6 +486,37 @@ pub fn apply_selection(lines: &mut [Line<'static>], ctx: &RenderCtx, width: u16)
     }
 }
 
+/// Columns left of the body text on a card of a list: the selection mark, the rail and the gap.
+pub const LIST_LEAD: usize = 3;
+
+/// The columns left of the body text on the rows after a card's first, with column 0 blank: where a box under the
+/// card starts.
+pub fn body_lead(
+    c: &Commit,
+    opts: &CardOptions,
+    ctx: &RenderCtx,
+    prefix: &Prefix,
+) -> Vec<Span<'static>> {
+    let prefix_w = row_width(&prefix.first).max(row_width(&prefix.rest));
+    let lane = lane_style(&c.author, ctx);
+    let mut lead = vec![Span::raw(" ")];
+    lead.extend(prefix.rest.iter().cloned());
+    lead.push(spaces(prefix_w - row_width(&prefix.rest)));
+    if opts.variant == Variant::Reply {
+        let rail = if opts.has_children {
+            g(ctx, "│", "|")
+        } else {
+            " "
+        };
+        lead.push(Span::styled(rail, lane));
+        lead.push(spaces(3));
+    } else {
+        lead.push(Span::styled(g(ctx, "│", "|"), lane));
+        lead.push(spaces(LIST_LEAD - 2));
+    }
+    lead
+}
+
 // --- commit card ------------------------------------------------------------
 
 fn lane_style(u: &User, ctx: &RenderCtx) -> Style {
@@ -877,26 +909,40 @@ fn excerpt(text: &str, max_rows: usize, width: usize, ctx: &RenderCtx) -> Vec<Ro
 }
 
 fn quote_rows(q: &Quoted, ctx: &RenderCtx, cw: usize) -> Vec<Row> {
+    quote_rows_limited(q, ctx, cw, QUOTE_BODY_ROWS)
+}
+
+/// The frame of a quoted commit with at most `body_rows` rows of its body.
+pub fn quoted_card(c: &Commit, ctx: &RenderCtx, cw: usize, body_rows: usize) -> Vec<Line<'static>> {
+    quoted_commit_rows(c, ctx, cw, body_rows)
+        .into_iter()
+        .map(Line::from)
+        .collect()
+}
+
+fn quoted_commit_rows(qc: &Commit, ctx: &RenderCtx, cw: usize, body_rows: usize) -> Vec<Row> {
+    let mut title = vec![Span::raw(format!("{} ", g(ctx, "❝", "\"")))];
+    title.extend(header_left(
+        ctx,
+        &qc.author,
+        qc.created_at,
+        HeaderKind::Full,
+        None,
+        None,
+        cw.saturating_sub(7),
+    ));
+    let inner = cw.saturating_sub(4);
+    let body = excerpt(&qc.body, body_rows, inner, ctx);
+    framed(ctx, false, cw, Some(title), body, Style::default())
+}
+
+fn quote_rows_limited(q: &Quoted, ctx: &RenderCtx, cw: usize, body_rows: usize) -> Vec<Row> {
     match q {
         Quoted::NotLoaded => Vec::new(),
         Quoted::Unavailable => text_box(ctx, cw, UNAVAILABLE_TEXT),
         Quoted::Item(item) => match item.as_ref() {
             ThreadItem::Tombstone(_) => text_box(ctx, cw, DELETED_TEXT),
-            ThreadItem::Commit(qc) => {
-                let mut title = vec![Span::raw(format!("{} ", g(ctx, "❝", "\"")))];
-                title.extend(header_left(
-                    ctx,
-                    &qc.author,
-                    qc.created_at,
-                    HeaderKind::Full,
-                    None,
-                    None,
-                    cw.saturating_sub(7),
-                ));
-                let inner = cw.saturating_sub(4);
-                let body = excerpt(&qc.body, 3, inner, ctx);
-                framed(ctx, false, cw, Some(title), body, Style::default())
-            }
+            ThreadItem::Commit(qc) => quoted_commit_rows(qc, ctx, cw, body_rows),
         },
     }
 }

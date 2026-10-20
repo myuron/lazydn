@@ -17,6 +17,10 @@ pub struct ProfileRows {
     pub lines: Vec<Line<'static>>,
     /// One entry per selectable card, a pinned commit first.
     pub cards: Vec<CardSpan>,
+    /// Where the terminal cursor goes (row of `lines`, column) while a reply box is open in this list.
+    pub cursor: Option<(usize, usize)>,
+    /// The last row of that box.
+    pub box_end: Option<usize>,
 }
 
 const MONTHS: [&str; 12] = [
@@ -227,6 +231,7 @@ fn list_rows(app: &App, state: &ProfileState, env: &Env, out: &mut ProfileRows) 
             feed.expanded.contains(&commit.id),
         );
         let card = rows.split_off(1);
+        let placed = env.placed.take();
         out.lines.extend(rows);
         if i == 0 && has_pinned {
             out.lines.push(plain(" ⚲ Pinned", w));
@@ -235,6 +240,11 @@ fn list_rows(app: &App, state: &ProfileState, env: &Env, out: &mut ProfileRows) 
             start: out.lines.len(),
             height: card.len(),
         });
+        // The cursor row counted the rail row, which was split off from the card.
+        if let Some(place) = placed {
+            out.cursor = Some((out.lines.len() + place.cursor.0 - 1, place.cursor.1));
+            out.box_end = Some(out.lines.len() + place.end - 1);
+        }
         out.lines.extend(card);
     }
     // Emptiness is judged without the pinned commit, which is not part of the list being loaded.
@@ -308,9 +318,11 @@ pub fn rows(app: &App, username: &str, width: u16) -> ProfileRows {
         Session::Guest | Session::Restoring => None,
     };
     let env = Env {
+        app,
         ctx: render,
         own,
         width: w,
+        placed: std::cell::Cell::new(None),
     };
     list_rows(app, state, &env, &mut out);
     out

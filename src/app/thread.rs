@@ -1,7 +1,7 @@
 use super::{App, Screen, Session};
 use crate::action::Effect;
-use crate::feed::{LoadState, ReqId, settle_scroll};
-use crate::model::ThreadItem;
+use crate::feed::{LoadState, ReqId, box_span, settle_card_scroll};
+use crate::model::{Commit, ThreadItem};
 use crate::thread::{Entry, ReplyList, item_id, item_replies};
 
 /// Thread screen: requests, selection and scrolling.
@@ -100,6 +100,22 @@ impl App {
             .entries(id, self.is_guest())
             .into_iter()
             .nth(state.selected)
+    }
+
+    /// The commit under the selection; a tombstone or a "Show more" row has none.
+    pub(super) fn thread_selected_commit(&self, id: &str) -> Option<Commit> {
+        let state = self.threads.get(id)?;
+        let commit_of = |item: &ThreadItem| match item {
+            ThreadItem::Commit(c) => Some((**c).clone()),
+            ThreadItem::Tombstone(_) => None,
+        };
+        match self.selected_entry(id)? {
+            Entry::Ancestor(i) => state.ancestors.get(i).and_then(commit_of),
+            Entry::Main => state.main.clone(),
+            Entry::Continuation => state.continuation(id).cloned(),
+            Entry::Reply(item, _) => self.find_item(id, &item).as_ref().and_then(commit_of),
+            Entry::ShowMore(_) => None,
+        }
     }
 
     pub(super) fn thread_select(&mut self, id: &str, index: usize) -> Vec<Effect> {
@@ -219,13 +235,19 @@ impl App {
         let scroll = usize::from(state.scroll);
         let rows = crate::ui::thread::rows(self, id, main.width.saturating_sub(2));
         let wanted = match rows.entries.get(selected) {
-            Some(span) if selected > 0 => {
+            Some(span) if selected > 0 || rows.cursor.is_some() => {
                 // The rows after an entry (hints, loading, errors) belong to it, so they scroll into view too.
                 let height = match rows.entries.get(selected + 1) {
                     Some(next) => next.start - span.start,
                     None => rows.lines.len() - span.start,
                 };
-                settle_scroll((span.start, height), rows.lines.len(), scroll, view)
+                settle_card_scroll(
+                    (span.start, height),
+                    box_span(rows.cursor, rows.box_end),
+                    rows.lines.len(),
+                    scroll,
+                    view,
+                )
             }
             _ => 0,
         };

@@ -86,6 +86,10 @@ pub enum Action {
     OpenSignIn,
     CloseModal,
     Commit,
+    /// `r`: opens the reply box under the selected card.
+    Reply,
+    /// `q`: opens the quote dialog for the selected card.
+    Quote,
     FeedLoaded {
         key: FeedKey,
         req: ReqId,

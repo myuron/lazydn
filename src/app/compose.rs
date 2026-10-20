@@ -1,6 +1,6 @@
 use time::Duration;
 
-use super::{App, Modal, Pane, Screen, Session, ToastKind, toast};
+use super::{App, Modal, Pane, Screen, ScreenKind, Session, ToastKind, toast};
 use crate::action::{Effect, Failure};
 use crate::body::{MAX_BODY_LEN, body_len};
 use crate::compose::{Compose, InFlight, Surface};
@@ -8,11 +8,13 @@ use crate::drafts::{DraftKey, Drafts, is_valid_account_id};
 use crate::editor::Editor;
 use crate::feed::{FeedKey, ReqId};
 use crate::keymap::ComposerKey;
-use crate::model::{Commit, Status};
+use crate::model::{Commit, Status, ThreadItem};
+use crate::thread::item_id;
 use crate::ui::compose::{compose_text_width, view_top_for};
 
 /// Seconds after the last edit at which the drafts are written.
 const SAVE_DELAY_SECS: i64 = 2;
+const STILL_SENDING: &str = "a commit is still being sent";
 const PASTE_CUT_TEXT: &str = "pasted text was cut at 8000 characters";
 
 /// The composer and the drafts behind it.
@@ -98,30 +100,115 @@ impl App {
 
     /// `c`: opens the composer inline on Log and as a dialog elsewhere; a guest is asked to sign in.
     pub(super) fn open_composer(&mut self) -> Vec<Effect> {
-        match self.session {
-            Session::Guest => return self.open_sign_in(),
-            Session::Restoring => return Vec::new(),
-            Session::SignedIn(_) => {}
-        }
-        if self.compose.is_some() || self.modal.is_some() {
-            return Vec::new();
+        if let Some(early) = self.session_gate() {
+            return early;
         }
         let surface = if matches!(self.screen, Screen::Log(_)) {
-            self.focus = Pane::Main;
             Surface::Inline
         } else {
-            self.modal = Some(Modal::Composer);
             Surface::Modal
         };
-        let sending = self.in_flight.as_ref().filter(|f| f.key == DraftKey::New);
+        self.open_compose(DraftKey::New, surface, None)
+    }
+
+    /// `r`: opens the reply box under the selected card.
+    pub(super) fn open_reply(&mut self) -> Vec<Effect> {
+        self.open_on_selected(false)
+    }
+
+    /// `q`: opens the quote dialog for the selected card.
+    pub(super) fn open_quote(&mut self) -> Vec<Effect> {
+        self.open_on_selected(true)
+    }
+
+    /// `Some` when the session decides alone: a guest is asked to sign in, a restoring session waits.
+    fn session_gate(&mut self) -> Option<Vec<Effect>> {
+        match self.session {
+            Session::Guest => Some(self.open_sign_in()),
+            Session::Restoring => Some(Vec::new()),
+            Session::SignedIn(_) => None,
+        }
+    }
+
+    fn open_on_selected(&mut self, quote: bool) -> Vec<Effect> {
+        if let Some(early) = self.session_gate() {
+            return early;
+        }
+        let Some(commit) = self.selected_commit() else {
+            return Vec::new();
+        };
+        let (key, surface) = if quote {
+            (DraftKey::Quote(commit.id.clone()), Surface::Modal)
+        } else {
+            (DraftKey::Reply(commit.id.clone()), Surface::ReplyBox)
+        };
+        self.open_compose(key, surface, Some(Box::new(commit)))
+    }
+
+    /// Replaces the open composer, whose draft stays; help and the sign-in dialog are not interrupted.
+    fn open_compose(
+        &mut self,
+        key: DraftKey,
+        surface: Surface,
+        target: Option<Box<Commit>>,
+    ) -> Vec<Effect> {
+        if matches!(self.modal, Some(Modal::Help | Modal::SignIn)) {
+            return Vec::new();
+        }
+        if self.compose.as_ref().is_some_and(|c| c.key == key) {
+            return Vec::new();
+        }
+        self.compose = None;
+        self.modal = if surface == Surface::Modal {
+            Some(Modal::Composer)
+        } else {
+            self.focus = Pane::Main;
+            None
+        };
+        let sending = self.in_flight.as_ref().is_some_and(|f| f.key == key);
         self.compose = Some(Compose {
-            key: DraftKey::New,
+            key,
             surface,
-            submitting: sending.is_some(),
+            submitting: sending,
             error: None,
             view_top: 0,
+            target,
         });
         Vec::new()
+    }
+
+    fn selected_commit(&self) -> Option<Commit> {
+        match self.kind() {
+            ScreenKind::Feed(key) => {
+                let feed = self.feeds.get(&key)?;
+                feed.items.get(feed.selected).cloned()
+            }
+            ScreenKind::Profile(_) => self.profile_selected_commit(),
+            ScreenKind::Thread(id) => self.thread_selected_commit(&id),
+            ScreenKind::Connections(..) | ScreenKind::Notifications | ScreenKind::Settings => None,
+        }
+    }
+
+    /// Whether the list on screen still holds the commit.
+    fn screen_holds(&self, id: &str) -> bool {
+        match self.kind() {
+            ScreenKind::Feed(key) => self
+                .feeds
+                .get(&key)
+                .is_some_and(|f| f.items.iter().any(|c| c.id == id)),
+            ScreenKind::Profile(name) => self
+                .profile(&name)
+                .filter(|s| s.shows_list())
+                .is_some_and(|s| s.cards(self.signed_in()).iter().any(|c| c.id == id)),
+            ScreenKind::Thread(thread) => self.threads.get(&thread).is_some_and(|s| {
+                s.main.as_ref().is_some_and(|m| m.id == id)
+                    || s.ancestors.iter().any(|i| item_id(i) == id)
+                    || s.children
+                        .values()
+                        .any(|l| l.items.iter().any(|i| item_id(i) == id))
+            }),
+            ScreenKind::Connections(..) | ScreenKind::Notifications | ScreenKind::Settings => false,
+        }
     }
 
     pub(super) fn on_compose_key(&mut self, key: ComposerKey) -> Vec<Effect> {
@@ -212,7 +299,7 @@ impl App {
         let Some(compose) = &self.compose else {
             return Vec::new();
         };
-        if compose.submitting || self.in_flight.is_some() {
+        if compose.submitting {
             return Vec::new();
         }
         let key = compose.key.clone();
@@ -221,6 +308,13 @@ impl App {
         };
         let len = body_len(&body);
         if len == 0 || len > MAX_BODY_LEN {
+            return Vec::new();
+        }
+        // The answer of the commit that is out decides what the next one may do, so it cannot overtake it.
+        if let Some(out) = &self.in_flight {
+            if out.key != key {
+                self.show_toast(ToastKind::Info, STILL_SENDING.into());
+            }
             return Vec::new();
         }
         self.next_req += 1;
@@ -255,13 +349,24 @@ impl App {
         } else {
             ""
         };
-        self.show_toast(ToastKind::Success, format!("Committed {hash}{review}"));
+        let word = if commit.parent_id.is_some() {
+            "Replied"
+        } else if commit.quoted_commit_id.is_some() {
+            "Quoted"
+        } else {
+            "Committed"
+        };
+        self.show_toast(ToastKind::Success, format!("{word} {hash}{review}"));
         let signed_in = matches!(self.session, Session::SignedIn(_));
         let before_sign_in = self.sign_in_boundary.is_some_and(|b| req.0 <= b.0);
         if !signed_in || before_sign_in {
             return Vec::new();
         }
-        self.insert_at_heads(commit);
+        match commit.parent_id.clone() {
+            // The log lists hold top-level commits only, so a reply is counted where its parent is shown.
+            Some(parent) => self.apply_reply(&parent, &commit),
+            None => self.insert_at_heads(commit),
+        }
         // An answer for another request leaves the composer to the one that is out.
         if let Some(sent) = self.in_flight.clone().filter(|f| f.req == req) {
             self.in_flight = None;
@@ -287,18 +392,51 @@ impl App {
 
     /// A list that was never loaded, or is being replaced, will get the commit from the server.
     fn insert_at_heads(&mut self, commit: Commit) {
+        let open_parent = self
+            .compose
+            .as_ref()
+            .filter(|c| c.surface == Surface::ReplyBox)
+            .and_then(|c| c.key.reply_to().map(String::from));
         for tab in [super::LogTab::Following, super::LogTab::Latest] {
             let Some(feed) = self.feeds.get_mut(&FeedKey::Log(tab)) else {
                 continue;
             };
+            let box_parent_selected = open_parent
+                .as_deref()
+                .is_some_and(|id| feed.items.get(feed.selected).is_some_and(|c| c.id == id));
             let replacing = feed.pending.as_ref().is_some_and(|p| !p.append);
             if !feed.loaded_once || replacing || feed.items.iter().any(|c| c.id == commit.id) {
                 continue;
             }
             feed.items.insert(0, commit.clone());
-            if feed.selected > 0 {
+            // The card under an open reply box stays selected, whatever its place.
+            if feed.selected > 0 || box_parent_selected {
                 feed.selected += 1;
             }
+        }
+    }
+
+    /// Raises the reply count of `parent` in every copy, and adds the reply to a thread that holds all replies.
+    fn apply_reply(&mut self, parent: &str, reply: &Commit) {
+        self.for_each_copy(parent, |mut copy| {
+            if let Some(n) = copy.replies_count() {
+                *n += 1;
+            }
+        });
+        let threads: Vec<String> = self.threads.keys().cloned().collect();
+        for thread in threads {
+            let kept = self.selected_entry(&thread);
+            if let Some(list) = self
+                .threads
+                .get_mut(&thread)
+                .and_then(|state| state.children.get_mut(parent))
+                // A list that failed to load would look loaded with the reply as its only item.
+                .filter(|l| l.next_cursor.is_none() && l.pending.is_none() && l.failed().is_none())
+                && !list.items.iter().any(|i| item_id(i) == reply.id)
+            {
+                list.items.push(ThreadItem::Commit(Box::new(reply.clone())));
+            }
+            self.restore_selection(&thread, kept);
         }
     }
 
@@ -322,6 +460,15 @@ impl App {
 
     /// Keeps the cursor row of the text in view.
     pub(super) fn reconcile_compose(&mut self) {
+        // A thread reloaded with `R` loses its replies at once, which closes a box under one of them. Keys cannot
+        // reach that, since the box takes them all; only an action can.
+        let orphaned = self.compose.as_ref().is_some_and(|c| {
+            c.surface == Surface::ReplyBox
+                && c.key.reply_to().is_some_and(|id| !self.screen_holds(id))
+        });
+        if orphaned {
+            self.compose = None;
+        }
         let Some(compose) = &self.compose else {
             return;
         };

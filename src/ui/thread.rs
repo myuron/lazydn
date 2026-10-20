@@ -3,12 +3,16 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Session};
+use crate::compose::Surface;
+use crate::drafts::Drafts;
 use crate::feed::LoadState;
 use crate::model::{Commit, ThreadItem};
-use crate::thread::{Slot, SlotKind, ThreadState, short_hash};
+use crate::thread::{Slot, SlotKind, ThreadState, item_id, short_hash};
 use crate::ui::card::{
-    CardInput, CardOptions, Node, Prefix, RenderCtx, Variant, apply_selection, card_lines,
+    CardInput, CardOptions, Node, Prefix, RenderCtx, Variant, apply_selection, body_lead,
+    card_lines,
 };
+use crate::ui::compose::reply_box;
 use crate::ui::feed::{CardSpan, plain, render_ctx, truncate};
 use crate::ui::theme;
 
@@ -17,6 +21,10 @@ pub struct ThreadRows {
     pub lines: Vec<Line<'static>>,
     /// One entry per selectable item, in selection order.
     pub entries: Vec<CardSpan>,
+    /// Where the terminal cursor goes (row of `lines`, column) while a reply box is open in this thread.
+    pub cursor: Option<(usize, usize)>,
+    /// The last row of that box.
+    pub box_end: Option<usize>,
 }
 
 const COPY_LINK: &str = "y copy link";
@@ -54,6 +62,21 @@ fn without_count(c: &Commit) -> Commit {
         replies_count: None,
         ..c.clone()
     }
+}
+
+/// The thing a card is drawn from.
+enum CardRef<'a> {
+    Item(&'a ThreadItem),
+    Commit(&'a Commit),
+}
+
+enum Drawn<'a> {
+    Card {
+        card: CardRef<'a>,
+        opts: CardOptions,
+        prefix: Prefix,
+    },
+    Plain(Vec<Line<'static>>),
 }
 
 struct Painter<'a> {
@@ -116,30 +139,43 @@ impl Painter<'_> {
         ])]
     }
 
-    fn slot_lines(&self, slot: &Slot, main: &Commit) -> Vec<Line<'static>> {
+    /// What a slot draws: a card with its options and prefix, or ready rows.
+    fn draw_slot<'a>(&self, slot: &'a Slot, main: &'a Commit, drafts: &Drafts) -> Drawn<'a> {
+        let card = |card, opts: CardOptions, id: &str, prefix| Drawn::Card {
+            card,
+            opts: CardOptions {
+                has_draft: drafts.has_reply(id),
+                ..opts
+            },
+            prefix,
+        };
         match &slot.kind {
-            SlotKind::Rail => vec![self.rail(main)],
-            SlotKind::Ancestor(item) => {
-                self.item_card(item, CardOptions::default(), &Prefix::default())
-            }
-            SlotKind::Main { pos } => self.commit_card(
-                main,
+            SlotKind::Ancestor(item) => card(
+                CardRef::Item(item),
+                CardOptions::default(),
+                item_id(item),
+                Prefix::default(),
+            ),
+            SlotKind::Main { pos } => card(
+                CardRef::Commit(main),
                 CardOptions {
                     variant: Variant::ThreadMain,
                     thread_pos: *pos,
                     ..CardOptions::default()
                 },
-                &Prefix::default(),
+                &main.id,
+                Prefix::default(),
             ),
-            SlotKind::Continuation(c) => self.commit_card(
-                c,
+            SlotKind::Continuation(c) => card(
+                CardRef::Commit(c),
                 CardOptions {
                     variant: Variant::Continuation,
                     node: Node::SameAuthor,
                     thread_pos: Some((2, 2)),
                     ..CardOptions::default()
                 },
-                &Prefix::default(),
+                &c.id,
+                Prefix::default(),
             ),
             SlotKind::Reply {
                 item,
@@ -147,8 +183,8 @@ impl Painter<'_> {
                 replying_to,
                 quote,
                 has_children,
-            } => self.item_card(
-                item,
+            } => card(
+                CardRef::Item(item),
                 CardOptions {
                     variant: Variant::Reply,
                     replying_to: replying_to.clone(),
@@ -156,17 +192,19 @@ impl Painter<'_> {
                     has_children: *has_children,
                     ..CardOptions::default()
                 },
-                &prefix_of(lasts, &self.ctx),
+                item_id(item),
+                prefix_of(lasts, &self.ctx),
             ),
+            SlotKind::Rail => Drawn::Plain(vec![self.rail(main)]),
             SlotKind::Hint { lasts, count } => {
                 let text = if *count == 1 {
                     "1 reply (o)".to_string()
                 } else {
                     format!("{count} replies (o)")
                 };
-                self.note(lasts, &text)
+                Drawn::Plain(self.note(lasts, &text))
             }
-            SlotKind::Note { lasts, text } => self.note(lasts, text),
+            SlotKind::Note { lasts, text } => Drawn::Plain(self.note(lasts, text)),
             SlotKind::Error {
                 lasts,
                 code,
@@ -176,17 +214,74 @@ impl Painter<'_> {
                     "{}error: {code} — press {retry_key} to retry",
                     guides(lasts, &self.ctx)
                 );
-                vec![Line::from(vec![
+                Drawn::Plain(vec![Line::from(vec![
                     Span::raw(" "),
                     Span::raw(truncate(&body, self.width.saturating_sub(2))),
-                ])]
+                ])])
             }
-            SlotKind::SignIn => vec![plain(
+            SlotKind::SignIn => Drawn::Plain(vec![plain(
                 " ┊ sign in to see replies",
                 self.width.saturating_sub(1),
-            )],
+            )]),
         }
     }
+
+    fn slot_lines(&self, slot: &Slot, main: &Commit, drafts: &Drafts) -> Vec<Line<'static>> {
+        match self.draw_slot(slot, main, drafts) {
+            Drawn::Card {
+                card: CardRef::Item(item),
+                opts,
+                prefix,
+            } => self.item_card(item, opts, &prefix),
+            Drawn::Card {
+                card: CardRef::Commit(c),
+                opts,
+                prefix,
+            } => self.commit_card(c, opts, &prefix),
+            Drawn::Plain(lines) => lines,
+        }
+    }
+
+    /// The columns left of the body text of the card in `slot`, when it is the card of a commit.
+    fn lead_of(&self, slot: &Slot, main: &Commit, drafts: &Drafts) -> Option<Vec<Span<'static>>> {
+        let Drawn::Card { card, opts, prefix } = self.draw_slot(slot, main, drafts) else {
+            return None;
+        };
+        let commit: &Commit = match card {
+            CardRef::Commit(c) => c,
+            CardRef::Item(ThreadItem::Commit(c)) => c,
+            CardRef::Item(ThreadItem::Tombstone(_)) => return None,
+        };
+        Some(body_lead(commit, &opts, &self.ctx, &prefix))
+    }
+}
+
+/// The id of the commit that a selectable slot stands for.
+fn slot_item_id<'a>(slot: &'a Slot, main: &'a Commit) -> Option<&'a str> {
+    match &slot.kind {
+        SlotKind::Ancestor(item) | SlotKind::Reply { item, .. } => Some(item_id(item)),
+        SlotKind::Main { .. } => Some(&main.id),
+        SlotKind::Continuation(c) => Some(&c.id),
+        _ => None,
+    }
+}
+
+/// Columns left of the body of the card that has the open reply box, for the width of its text.
+pub fn box_lead_width(app: &App, id: &str) -> Option<usize> {
+    let state = app.thread(id)?;
+    let main = state.main.as_ref()?;
+    let parent = app.compose()?.key.reply_to()?;
+    let painter = Painter {
+        ctx: render_ctx(app),
+        own: None,
+        width: 0,
+    };
+    state
+        .slots(id, app.is_guest())
+        .iter()
+        .filter(|slot| slot_item_id(slot, main) == Some(parent))
+        .find_map(|slot| painter.lead_of(slot, main, app.drafts()))
+        .map(|lead| lead.iter().map(|s| s.content.width()).sum())
 }
 
 fn header(id: &str, width: usize) -> Line<'static> {
@@ -216,7 +311,7 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
     let Some(state) = app.thread(id) else {
         return ThreadRows {
             lines: vec![plain(" ┊ (loading...)", width)],
-            entries: Vec::new(),
+            ..ThreadRows::default()
         };
     };
     let main = match &state.main {
@@ -224,7 +319,7 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
         _ => {
             return ThreadRows {
                 lines: vec![status_line(state, id, width)],
-                entries: Vec::new(),
+                ..ThreadRows::default()
             };
         }
     };
@@ -240,11 +335,24 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
     let mut out = ThreadRows::default();
     out.lines.push(header(id, width));
     let mut index = 0;
+    let open_box = app
+        .compose()
+        .filter(|c| c.surface == Surface::ReplyBox)
+        .and_then(|c| c.key.reply_to().map(|parent| (c, parent)));
     for slot in state.slots(id, guest) {
-        let mut lines = painter.slot_lines(&slot, main);
+        let mut lines = painter.slot_lines(&slot, main, app.drafts());
         if slot.entry.is_some() {
             if index == state.selected {
                 apply_selection(&mut lines, &painter.ctx, painter.card_w());
+            }
+            if let Some((compose, parent)) = &open_box
+                && slot_item_id(&slot, main) == Some(*parent)
+                && let Some(lead) = painter.lead_of(&slot, main, app.drafts())
+            {
+                let (boxed, cursor) = reply_box(app, compose, &lead, usize::from(painter.card_w()));
+                out.cursor = Some((out.lines.len() + lines.len() + cursor.0, cursor.1));
+                out.box_end = Some(out.lines.len() + lines.len() + boxed.len() - 1);
+                lines.extend(boxed);
             }
             index += 1;
             out.entries.push(CardSpan {

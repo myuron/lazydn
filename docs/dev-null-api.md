@@ -209,7 +209,7 @@ pastéis モードのオン・オフを切り替えます。`GET /v1/me` と同�
 
 #### `GET /v1/log/{log}`
 
-`{log}` には `following`、`latest`、`trending` のどれかを指定します。1 ページ 20 件です。
+`{log}` には `following`、`latest`、`trending` のどれかを指定します。1 ページ 20 件です。返すのはトップレベルの commit（`parent_id` が null のもの）だけで、返信は含まれません。
 
 | クエリ | 内容 |
 | --- | --- |

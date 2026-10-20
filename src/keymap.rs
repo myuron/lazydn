@@ -154,6 +154,10 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             _ => {}
         }
     }
+    let commit_cards = matches!(
+        app.screen(),
+        Screen::Log(_) | Screen::Saved | Screen::Thread(_) | Screen::Profile(_)
+    );
     if list {
         let action = match key.code {
             KeyCode::Char('j') | KeyCode::Down => Some(Action::MoveSelection(1)),
@@ -162,6 +166,8 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::OpenSelected),
             KeyCode::Char('o') => Some(Action::ToggleReplies),
             KeyCode::Char('R') => Some(Action::Refresh),
+            KeyCode::Char('r') if commit_cards => Some(Action::Reply),
+            KeyCode::Char('q') if commit_cards => Some(Action::Quote),
             KeyCode::Char('@') if !matches!(app.screen(), Screen::Connections(..)) => {
                 Some(Action::OpenAuthor)
             }

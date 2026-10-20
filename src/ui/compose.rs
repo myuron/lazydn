@@ -5,16 +5,17 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::App;
+use crate::app::{App, Screen};
 use crate::body::body_len;
 use crate::compose::{Compose, Counter, CounterTone, Surface, counter};
 use crate::drafts::DraftKey;
 use crate::editor::wrap;
 use crate::layout::LayoutMode;
+use crate::ui::card::{LIST_LEAD, clean_inline, quoted_card};
 use crate::ui::centered;
-use crate::ui::feed::truncate;
+use crate::ui::feed::{render_ctx, truncate};
 use crate::ui::layout::split;
 
 const DIALOG_MAX_WIDTH: u16 = 64;
@@ -35,26 +36,101 @@ fn dialog_width(app: &App) -> u16 {
     app.size().0.saturating_sub(4).min(DIALOG_MAX_WIDTH)
 }
 
+/// The frame of a reply box takes two columns and the spaces inside it two more.
+const BOX_PADDING: usize = 4;
+/// Most text rows a reply box shows.
+const BOX_MAX_ROWS: usize = 8;
+
+/// Columns of the card under which a box sits, from the left edge of the list to the card's right edge.
+fn card_width(app: &App) -> usize {
+    usize::from(main_area(app).width.saturating_sub(2)).saturating_sub(1)
+}
+
 /// Columns the text of a composer on `surface` may take before it wraps.
 pub fn compose_text_width(app: &App, surface: Surface) -> usize {
     match surface {
-        Surface::Inline | Surface::ReplyBox => {
-            usize::from(main_area(app).width.saturating_sub(2)).saturating_sub(5)
+        Surface::Inline => usize::from(main_area(app).width.saturating_sub(2)).saturating_sub(5),
+        Surface::ReplyBox => {
+            let lead = match app.screen() {
+                Screen::Thread(id) => crate::ui::thread::box_lead_width(app, &id),
+                _ => None,
+            };
+            card_width(app)
+                .saturating_sub(lead.unwrap_or(LIST_LEAD))
+                .saturating_sub(BOX_PADDING)
         }
         Surface::Modal => usize::from(dialog_width(app)).saturating_sub(7),
     }
 }
 
+/// What a dialog draws besides the text, shrunk to the screen: the text field gives way first, then the body of the
+/// quoted card, then the card, and last the row with the keys. Only a quote has a card to draw; the dialog of a new
+/// commit gives up nothing but its keys row, on a screen too low for it.
+struct ModalPlan {
+    frame: Vec<Line<'static>>,
+    keys_row: bool,
+}
+
+fn modal_plan(app: &App, compose: &Compose) -> ModalPlan {
+    let allowed = usize::from(app.size().1).saturating_sub(4);
+    let quoted = compose
+        .target
+        .as_ref()
+        .filter(|_| matches!(compose.key, DraftKey::Quote(_)));
+    // A border pair, the blank row, one text row and the two rows under the text.
+    let fixed = 2 + 1 + 1 + FOOTER_ROWS;
+    if let Some(target) = quoted {
+        let cw = usize::from(dialog_width(app)).saturating_sub(4);
+        let ctx = render_ctx(app);
+        for body_rows in [3, 1] {
+            let frame = quoted_card(target, &ctx, cw, body_rows);
+            if fixed + frame.len() <= allowed {
+                return ModalPlan {
+                    frame,
+                    keys_row: true,
+                };
+            }
+        }
+    }
+    ModalPlan {
+        frame: Vec::new(),
+        keys_row: fixed <= allowed,
+    }
+}
+
 /// Most text rows the field may show on this screen.
-fn max_shown(app: &App, surface: Surface) -> usize {
-    match surface {
-        Surface::Inline | Surface::ReplyBox => {
+fn max_shown(app: &App, compose: &Compose, plan: Option<&ModalPlan>) -> usize {
+    match compose.surface {
+        Surface::ReplyBox => {
+            let tabs = if matches!(app.screen(), Screen::Log(_)) {
+                2
+            } else {
+                0
+            };
+            let view = usize::from(main_area(app).height.saturating_sub(2 + tabs));
+            // A frame row above, the row with the keys and a frame row below.
+            view.saturating_sub(3).clamp(1, BOX_MAX_ROWS)
+        }
+        Surface::Inline => {
             // Under the main pane's border and the two rows of tabs.
             let list = usize::from(main_area(app).height.saturating_sub(4));
             list.saturating_sub(1 + FOOTER_ROWS)
                 .clamp(1, INLINE_MAX_ROWS)
         }
-        Surface::Modal => usize::from(app.size().1).saturating_sub(9).max(1),
+        Surface::Modal => {
+            let own;
+            let plan = match plan {
+                Some(plan) => plan,
+                None => {
+                    own = modal_plan(app, compose);
+                    &own
+                }
+            };
+            let footer = if plan.keys_row { FOOTER_ROWS } else { 1 };
+            usize::from(app.size().1)
+                .saturating_sub(4 + 3 + footer + plan.frame.len())
+                .max(1)
+        }
     }
 }
 
@@ -69,14 +145,29 @@ pub struct Metrics {
 }
 
 pub fn metrics(app: &App, compose: &Compose) -> Metrics {
+    metrics_at(app, compose, compose_text_width(app, compose.surface), None)
+}
+
+/// Like `metrics` for text that wraps at `text_width`, and a dialog laid out as `plan` says when that is known.
+fn metrics_at(
+    app: &App,
+    compose: &Compose,
+    text_width: usize,
+    plan: Option<&ModalPlan>,
+) -> Metrics {
     static EMPTY: [String; 1] = [String::new()];
     let (lines, cursor) = match app.drafts().get(&compose.key) {
         Some(editor) => (editor.lines(), editor.cursor()),
         None => (&EMPTY[..], (0, 0)),
     };
-    let wrapped = wrap(lines, cursor, compose_text_width(app, compose.surface));
-    let cap = max_shown(app, compose.surface);
-    let shown = wrapped.rows.len().clamp(cap.min(3), cap);
+    let wrapped = wrap(lines, cursor, text_width);
+    let cap = max_shown(app, compose, plan);
+    let floor = if compose.surface == Surface::ReplyBox {
+        1
+    } else {
+        cap.min(3)
+    };
+    let shown = wrapped.rows.len().clamp(floor, cap);
     Metrics {
         rows: wrapped.rows.into_iter().map(|r| r.text).collect(),
         shown,
@@ -152,12 +243,21 @@ fn two_sided(
     Line::from(vec![Span::raw(pad_to(&left, start)), right])
 }
 
-fn keys_row(app: &App, compose: &Compose, field: usize, rail: bool) -> Line<'static> {
-    let keys = if compose.submitting {
+/// The keys hint at the right of the last row of a composer.
+fn keys_text(app: &App, compose: &Compose) -> String {
+    if compose.submitting {
         "Esc cancel  Committing…".to_string()
     } else {
-        format!("Esc cancel  {} Commit", app.keyboard().submit_hint())
-    };
+        format!(
+            "Esc cancel  {} {}",
+            app.keyboard().submit_hint(),
+            action_word(&compose.key)
+        )
+    }
+}
+
+fn keys_row(app: &App, compose: &Compose, field: usize, rail: bool) -> Line<'static> {
+    let keys = keys_text(app, compose);
     let col = if rail { 4 } else { 1 };
     let start = field.saturating_sub(1 + keys.width());
     let label = if app.drafts().get(&compose.key).is_some() {
@@ -169,6 +269,14 @@ fn keys_row(app: &App, compose: &Compose, field: usize, rail: bool) -> Line<'sta
         ""
     };
     two_sided(rail, label, col, start, Span::raw(keys))
+}
+
+fn action_word(key: &DraftKey) -> &'static str {
+    match key {
+        DraftKey::New => "Commit",
+        DraftKey::Reply(_) => "Reply",
+        DraftKey::Quote(_) => "Quote",
+    }
 }
 
 fn body_text(app: &App, compose: &Compose) -> String {
@@ -216,25 +324,134 @@ pub fn render_modal(app: &App, frame: &mut Frame, area: Rect) {
     let Some(compose) = app.compose() else {
         return;
     };
-    let m = metrics(app, compose);
+    let plan = modal_plan(app, compose);
+    let m = metrics_at(
+        app,
+        compose,
+        compose_text_width(app, Surface::Modal),
+        Some(&plan),
+    );
     let top = drawn_top(&m, compose);
-    let height = u16::try_from(m.shown + FOOTER_ROWS + 3).unwrap_or(u16::MAX);
+    let footer = if plan.keys_row { FOOTER_ROWS } else { 1 };
+    let height = u16::try_from(m.shown + footer + plan.frame.len() + 3).unwrap_or(u16::MAX);
     let rect = centered(area, dialog_width(app), height);
     frame.render_widget(Clear, rect);
+    let title = match (&compose.key, &compose.target) {
+        (DraftKey::Quote(_), Some(target)) => {
+            format!(" Quote @{} ", clean_inline(&target.author.username))
+        }
+        _ => TITLE.to_string(),
+    };
     let block = Block::bordered()
         .border_type(BorderType::Double)
-        .title(TITLE);
+        .title(title);
     let inner = block.inner(rect);
     frame.render_widget(block, rect);
     let field = usize::from(inner.width);
     let mut lines = vec![Line::raw("")];
     lines.extend(text_rows(&m, top));
+    for line in plan.frame {
+        let mut spans = vec![Span::raw(" ")];
+        spans.extend(line.spans);
+        lines.push(Line::from(spans));
+    }
     lines.push(error_row(app, compose, field, false));
-    lines.push(keys_row(app, compose, field, false));
+    if plan.keys_row {
+        lines.push(keys_row(app, compose, field, false));
+    }
     frame.render_widget(Paragraph::new(lines), inner);
     let x = inner.x + 4 + u16::try_from(m.cursor.1).unwrap_or(0);
     let y = inner.y + 1 + u16::try_from(m.cursor.0.saturating_sub(top)).unwrap_or(0);
     if x < inner.x + inner.width && y < inner.y + inner.height {
         frame.set_cursor_position((x, y));
     }
+}
+
+/// Shortens `text` to `width` columns, ending in `…` when something was cut.
+fn cut_with_ellipsis(text: &str, width: usize) -> String {
+    if text.width() <= width {
+        return text.to_string();
+    }
+    let mut out = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        let w = c.width().unwrap_or(0);
+        if used + w + 1 > width {
+            break;
+        }
+        used += w;
+        out.push(c);
+    }
+    if width > 0 {
+        out.push('…');
+    }
+    out
+}
+
+/// The double-framed box of a reply, drawn to the right of `lead` (the columns of the card it sits under), and where
+/// the cursor goes in it (row of the returned lines, column from the left edge of the list).
+pub fn reply_box(
+    app: &App,
+    compose: &Compose,
+    lead: &[Span<'static>],
+    card_w: usize,
+) -> (Vec<Line<'static>>, (usize, usize)) {
+    let lead_w: usize = lead.iter().map(|s| s.content.width()).sum();
+    let box_w = card_w.saturating_sub(lead_w);
+    let text_w = box_w.saturating_sub(BOX_PADDING);
+    let m = metrics_at(app, compose, text_w, None);
+    let top = drawn_top(&m, compose);
+    let line = |body: Vec<Span<'static>>| {
+        let mut spans = lead.to_vec();
+        spans.extend(body);
+        Line::from(spans)
+    };
+
+    let handle = compose
+        .target
+        .as_ref()
+        .map(|c| clean_inline(&c.author.username))
+        .unwrap_or_default();
+    let title = format!(" Reply to @{handle} ");
+    let fill = "═".repeat(box_w.saturating_sub(2 + title.width()));
+    let mut lines = vec![line(vec![Span::raw(format!("╔{title}{fill}╗"))])];
+    for k in 0..m.shown {
+        let row = m.rows.get(top + k).map_or("", String::as_str);
+        lines.push(line(vec![Span::raw(format!(
+            "║ {} ║",
+            pad_to(row, text_w)
+        ))]));
+    }
+
+    let keys = keys_text(app, compose);
+    let counter = counter(body_len(&body_text(app, compose)));
+    let counter_w = counter
+        .as_ref()
+        .map_or(0, |c| c.remaining.to_string().width() + 2);
+    let right_w = counter_w + keys.width();
+    // The keys keep their place, then the counter; the error gets what is left.
+    let room = text_w.saturating_sub(right_w + 1);
+    let error = compose
+        .error
+        .as_deref()
+        .map(|e| cut_with_ellipsis(&format!("✗ {e}"), room))
+        .unwrap_or_default();
+    let mut footer = vec![
+        Span::raw("║ "),
+        Span::raw(pad_to(&error, text_w.saturating_sub(right_w))),
+    ];
+    if let Some(c) = &counter {
+        footer.push(counter_span(c));
+        footer.push(Span::raw("  "));
+    }
+    footer.push(Span::raw(keys));
+    footer.push(Span::raw(" ║"));
+    lines.push(line(footer));
+    lines.push(line(vec![Span::raw(format!(
+        "╚{}╝",
+        "═".repeat(box_w.saturating_sub(2))
+    ))]));
+
+    let row = 1 + m.cursor.0.saturating_sub(top);
+    (lines, (row, lead_w + 2 + m.cursor.1))
 }

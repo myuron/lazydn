@@ -207,7 +207,9 @@ fn draw_notifications(app: &App, frame: &mut Frame, inner: Rect) {
 
 fn draw_thread(app: &App, frame: &mut Frame, area: Rect, id: &str) {
     let scroll = app.thread(id).map_or(0, |t| usize::from(t.scroll));
-    let visible = thread_rows(app, id, area.width)
+    let thread = thread_rows(app, id, area.width);
+    place_cursor(frame, area, thread.cursor, scroll);
+    let visible = thread
         .lines
         .into_iter()
         .skip(scroll)
@@ -219,7 +221,9 @@ fn draw_thread(app: &App, frame: &mut Frame, area: Rect, id: &str) {
 
 fn draw_profile(app: &App, frame: &mut Frame, area: Rect, name: &str) {
     let scroll = app.profile(name).map_or(0, |s| usize::from(s.scroll()));
-    let visible = profile::rows(app, name, area.width)
+    let list = profile::rows(app, name, area.width);
+    place_cursor(frame, area, list.cursor, scroll);
+    let visible = list
         .lines
         .into_iter()
         .skip(scroll)
@@ -262,13 +266,7 @@ fn draw_connections(app: &App, frame: &mut Frame, inner: Rect, name: &str, tab: 
 fn draw_list(app: &App, frame: &mut Frame, area: Rect, key: FeedKey) {
     let feed = app.feed(key);
     let list_rows = rows(feed, key, app, area.width);
-    if let Some((row, col)) = list_rows.cursor
-        && let Some(y) = row.checked_sub(usize::from(feed.scroll))
-        && y < usize::from(area.height)
-        && col < usize::from(area.width)
-    {
-        frame.set_cursor_position((area.x + col as u16, area.y + y as u16));
-    }
+    place_cursor(frame, area, list_rows.cursor, usize::from(feed.scroll));
     let visible = list_rows
         .lines
         .into_iter()
@@ -276,5 +274,16 @@ fn draw_list(app: &App, frame: &mut Frame, area: Rect, key: FeedKey) {
         .take(usize::from(area.height));
     for (row, line) in area.rows().zip(visible) {
         frame.render_widget(Paragraph::new(line), row);
+    }
+}
+
+/// Puts the terminal cursor at (row, column) of a list scrolled by `scroll` rows, when that place is on screen.
+fn place_cursor(frame: &mut Frame, area: Rect, cursor: Option<(usize, usize)>, scroll: usize) {
+    if let Some((row, col)) = cursor
+        && let Some(y) = row.checked_sub(scroll)
+        && y < usize::from(area.height)
+        && col < usize::from(area.width)
+    {
+        frame.set_cursor_position((area.x + col as u16, area.y + y as u16));
     }
 }

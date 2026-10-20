@@ -2,7 +2,7 @@
 
 A terminal UI client for [dev-null.sh](https://dev-null.sh), built with Rust and Ratatui.
 
-lazydn is work in progress. You can read the log, threads, profiles and notifications, and write commits (`c`). Replies, quotes, stars and the like are not available yet.
+lazydn is work in progress. You can read the log, threads, profiles and notifications, write commits (`c`), and reply to (`r`) or quote (`q`) a commit. Stars and the like are not available yet.
 
 ## Start
 
@@ -63,9 +63,13 @@ Drafts are saved about two seconds after you stop typing, and at once when you c
 | `1`-`3` | Switch tab |
 | `g` then `l` `e` `n` `p` `s` `v` | Log, Trending, Notifications, Profile, Settings, Saved |
 | `R` | Refresh |
-| `c` | Write a commit (`Ctrl+Enter` or `Ctrl+S` posts, `Esc` closes) |
+| `c` | Write a commit |
+| `r` | Reply to the selected commit, in a box under its card |
+| `q` | Quote the selected commit, in a dialog |
 | `?` | Help |
 | `Q` | Quit |
+
+While you write (`c`, `r` or `q`), every key goes into the text: `Ctrl+Enter` or `Ctrl+S` posts and `Esc` closes. The draft is kept.
 
 ## Development
 

@@ -4,6 +4,7 @@ use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
 mod compose;
+mod copies;
 mod key_status;
 mod last_visit;
 mod notifications;
@@ -22,7 +23,7 @@ pub use toast::{Toast, ToastKind};
 
 use crate::action::{Action, Effect, Failure};
 use crate::api::client::RateLimit;
-use crate::feed::{Feed, FeedKey, LoadState, ReqId, ensure_visible, settle_scroll};
+use crate::feed::{Feed, FeedKey, LoadState, ReqId, box_span, ensure_visible, settle_card_scroll};
 use crate::keyboard::KeyboardMode;
 use crate::layout::LayoutMode;
 use crate::model::Lane;
@@ -411,6 +412,8 @@ impl App {
 
             Action::CloseModal => self.modal = None,
             Action::Commit => effects.extend(self.open_composer()),
+            Action::Reply => effects.extend(self.open_reply()),
+            Action::Quote => effects.extend(self.open_quote()),
             Action::Tick(now) => {
                 self.now = now;
                 self.expire_toast();
@@ -1061,14 +1064,20 @@ impl App {
             return;
         }
         let feed = &self.feeds[&key];
-        let scroll = if feed.selected == 0 {
+        let boxed = self
+            .compose
+            .as_ref()
+            .is_some_and(|c| c.surface == crate::compose::Surface::ReplyBox);
+        let scroll = if feed.selected == 0 && !boxed {
             0
         } else {
             let rows = crate::ui::feed::rows(feed, key, self, main.width.saturating_sub(2));
             let total = rows.lines.len();
+            let scroll = feed.scroll as usize;
+            let boxed = box_span(rows.cursor, rows.box_end);
             match crate::ui::feed::card_extent(&rows.cards, feed.selected, total) {
-                Some(extent) => settle_scroll(extent, total, feed.scroll as usize, view),
-                None => (feed.scroll as usize).min(total.saturating_sub(view)),
+                Some(extent) => settle_card_scroll(extent, boxed, total, scroll, view),
+                None => scroll.min(total.saturating_sub(view)),
             }
         };
         self.feeds.entry(key).or_default().scroll = scroll.min(u16::MAX as usize) as u16;

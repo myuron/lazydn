@@ -213,6 +213,28 @@ pub fn settle_scroll(extent: (usize, usize), lines: usize, scroll: usize, view: 
     ensure_visible(extent.0, extent.1, scroll, view).min(lines.saturating_sub(view))
 }
 
+/// The place of a reply box in the rows of a list: the row of the cursor and the last row of the box.
+pub fn box_span(cursor: Option<(usize, usize)>, end: Option<usize>) -> Option<(usize, usize)> {
+    cursor.zip(end).map(|((row, _), end)| (row, end))
+}
+
+/// Scroll that shows a card, with the reply box under it when `boxed` holds its (cursor row, last row). A card with its
+/// box taller than the view shows the rows from the cursor to the end of the box instead.
+pub fn settle_card_scroll(
+    extent: (usize, usize),
+    boxed: Option<(usize, usize)>,
+    lines: usize,
+    scroll: usize,
+    view: usize,
+) -> usize {
+    match boxed {
+        Some((cursor, end)) if extent.1 > view => {
+            ensure_visible(cursor, end + 1 - cursor, scroll, view).min(lines.saturating_sub(view))
+        }
+        _ => settle_scroll(extent, lines, scroll, view),
+    }
+}
+
 /// Returns the scroll offset that shows the card at `top..top + height` in a view of `view` rows.
 ///
 /// A card taller than the view is aligned to its top so that its header stays visible.

@@ -48,6 +48,8 @@ mod notifications_tests;
 #[cfg(test)]
 mod profile_tests;
 #[cfg(test)]
+mod reply_tests;
+#[cfg(test)]
 mod session_tests;
 #[cfg(test)]
 mod settings_tests;

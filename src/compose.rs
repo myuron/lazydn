@@ -2,6 +2,7 @@
 
 use crate::drafts::DraftKey;
 use crate::feed::ReqId;
+use crate::model::Commit;
 
 /// Where an open composer is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,7 +16,7 @@ pub enum Surface {
 }
 
 /// An open composer; the text it edits is the draft of `key`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Compose {
     pub key: DraftKey,
     pub surface: Surface,
@@ -25,6 +26,8 @@ pub struct Compose {
     pub error: Option<String>,
     /// The first wrapped row shown, for text taller than the field.
     pub view_top: usize,
+    /// The commit replied to or quoted, as it was when the composer opened; the title and the quoted card read it.
+    pub target: Option<Box<Commit>>,
 }
 
 /// The counter shows from this many characters left.
