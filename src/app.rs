@@ -357,6 +357,10 @@ impl App {
         self.last_visit.as_deref()
     }
 
+    pub fn set_last_visit(&mut self, id: Option<String>) {
+        self.last_visit = id;
+    }
+
     pub fn own_handle(&self) -> String {
         match &self.session {
             Session::SignedIn(me) => me.handle.clone(),
@@ -508,7 +512,15 @@ impl App {
         } else {
             let rows = crate::ui::feed::rows(feed, key, self, main.width.saturating_sub(2));
             let wanted = match rows.cards.get(feed.selected) {
-                Some(card) => ensure_visible(card.start, card.height, feed.scroll as usize, view),
+                Some(card) => {
+                    // The last card owns the closing rows (loading, error, root), so they scroll into view too.
+                    let height = if feed.selected + 1 == rows.cards.len() {
+                        rows.lines.len() - card.start
+                    } else {
+                        card.height
+                    };
+                    ensure_visible(card.start, height, feed.scroll as usize, view)
+                }
                 None => feed.scroll as usize,
             };
             // Shrinking content or a taller view must not leave blank rows below the list.

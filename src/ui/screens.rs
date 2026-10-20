@@ -5,6 +5,8 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, Paragraph};
 
 use crate::app::{App, LogTab, Pane, Screen, Session};
+use crate::feed::FeedKey;
+use crate::ui::feed::rows;
 use crate::ui::theme;
 
 pub fn tab_label(tab: LogTab) -> &'static str {
@@ -55,6 +57,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 
     match app.screen() {
         Screen::Log(tab) => render_log(app, frame, inner, tab),
+        Screen::Saved => draw_list(app, frame, inner, FeedKey::Saved),
         other => frame.render_widget(
             Paragraph::new(format!(" {} (not implemented yet)", screen_name(&other))),
             inner,
@@ -63,8 +66,8 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
-    let rows: Vec<Rect> = inner.rows().collect();
-    let Some(tab_row) = rows.first() else {
+    let screen_rows: Vec<Rect> = inner.rows().collect();
+    let Some(tab_row) = screen_rows.first() else {
         return;
     };
     let cells = thirds(*tab_row);
@@ -84,7 +87,7 @@ fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
             Paragraph::new(label).style(style),
             floor_centered(*cell, label_width),
         );
-        if is_selected && let Some(underline_row) = rows.get(1) {
+        if is_selected && let Some(underline_row) = screen_rows.get(1) {
             let rect = floor_centered(
                 Rect {
                     x: cell.x,
@@ -100,9 +103,30 @@ fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
         }
     }
 
+    let list = Rect {
+        y: tab_row.y + 2,
+        height: inner.height.saturating_sub(2),
+        ..inner
+    };
+    draw_list(app, frame, list, FeedKey::Log(selected));
+
     if matches!(app.session(), Session::Guest)
-        && let Some(row) = rows.get(3)
+        && let Some(row) = screen_rows.get(3)
     {
         frame.render_widget(Paragraph::new(" sign in to see the log  [L] Sign in"), *row);
+    }
+}
+
+/// One `rows` line per screen row, never wrapped, so the scroll maths in `App` stays exact.
+fn draw_list(app: &App, frame: &mut Frame, area: Rect, key: FeedKey) {
+    let feed = app.feed(key);
+    let list_rows = rows(feed, key, app, area.width);
+    let visible = list_rows
+        .lines
+        .into_iter()
+        .skip(usize::from(feed.scroll))
+        .take(usize::from(area.height));
+    for (row, line) in area.rows().zip(visible) {
+        frame.render_widget(Paragraph::new(line), row);
     }
 }

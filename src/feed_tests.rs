@@ -11,9 +11,9 @@ use crate::test_support::*;
 use crate::ui::feed::{CardSpan, rows};
 use crate::ui::layout::split;
 
-const FOLLOWING: FeedKey = FeedKey::Log(LogTab::Following);
-const LATEST: FeedKey = FeedKey::Log(LogTab::Latest);
-const TRENDING: FeedKey = FeedKey::Log(LogTab::Trending);
+pub(crate) const FOLLOWING: FeedKey = FeedKey::Log(LogTab::Following);
+pub(crate) const LATEST: FeedKey = FeedKey::Log(LogTab::Latest);
+pub(crate) const TRENDING: FeedKey = FeedKey::Log(LogTab::Trending);
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -85,7 +85,7 @@ fn ranked_page(n: usize) -> FeedPage {
 }
 
 /// Mimics the run loop's startup: Init, then Resize.
-fn started(w: u16, h: u16) -> (App, Vec<Effect>) {
+pub(crate) fn started(w: u16, h: u16) -> (App, Vec<Effect>) {
     let mut app = App::new(Session::SignedIn(fixture_me()), NOW, UtcOffset::UTC);
     let mut effects = app.update(Action::Init);
     effects.extend(app.update(Action::Resize(w, h)));
@@ -100,7 +100,7 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
 }
 
 /// Falls back to a bogus id so that a missing effect fails the assertions, not an unwrap.
-fn first_req(effects: &[Effect]) -> ReqId {
+pub(crate) fn first_req(effects: &[Effect]) -> ReqId {
     effects.iter().find_map(req_of).unwrap_or(ReqId(u64::MAX))
 }
 
@@ -134,7 +134,7 @@ fn polls(effects: &[Effect]) -> Vec<(LogTab, String)> {
         .collect()
 }
 
-fn deliver(app: &mut App, key: FeedKey, effects: &[Effect], page: FeedPage) {
+pub(crate) fn deliver(app: &mut App, key: FeedKey, effects: &[Effect], page: FeedPage) {
     app.update(Action::FeedLoaded {
         key,
         req: first_req(effects),
@@ -155,7 +155,7 @@ fn loading(app: &App, key: FeedKey) -> Option<bool> {
     feed.pending.as_ref().map(|p| p.append)
 }
 
-fn down(app: &mut App, n: usize) -> Vec<Effect> {
+pub(crate) fn down(app: &mut App, n: usize) -> Vec<Effect> {
     let mut effects = Vec::new();
     for _ in 0..n {
         effects.extend(press(app, KeyCode::Char('j')));
@@ -171,7 +171,7 @@ fn key_of(app: &App) -> FeedKey {
     }
 }
 
-fn list_width(app: &App) -> u16 {
+pub(crate) fn list_width(app: &App) -> u16 {
     let (w, h) = app.size();
     split(Rect::new(0, 0, w, h), app.layout_mode())
         .main
@@ -951,7 +951,8 @@ fn list_view_height_is_35_rows_for_log_and_37_for_saved_at_120x40() {
     let last = spans[29];
     let total = total_lines(&app, FOLLOWING);
     assert_eq!(app.feed(FOLLOWING).scroll as usize, total - 35);
-    assert_eq!(last.start + last.height, total);
+    // Without a next cursor the root-commit line follows the last card.
+    assert_eq!(last.start + last.height + 1, total);
 
     let effects = type_str(&mut app, "gv");
     deliver(&mut app, FeedKey::Saved, &effects, page(0, 30, None));

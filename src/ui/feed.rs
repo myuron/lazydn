@@ -1,8 +1,15 @@
-use ratatui::text::Line;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::{App, Session};
-use crate::feed::{Feed, FeedKey};
-use crate::ui::card::{CardInput, CardOptions, Prefix, RenderCtx, card_lines};
+use crate::app::{App, LogTab, Session};
+use crate::feed::{Feed, FeedKey, LoadState};
+use crate::model::Commit;
+use crate::timefmt::day_label;
+use crate::ui::card::{
+    CardInput, CardOptions, Node, Prefix, RenderCtx, apply_selection, card_lines,
+};
+use crate::ui::theme;
 
 /// Where one card sits inside [`FeedRows::lines`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,33 +40,239 @@ pub fn render_ctx(app: &App) -> RenderCtx {
     }
 }
 
+const HINT: &str = "[c] Write a commit";
+const HINT_COL_MAX: usize = 38;
+const HINT_COL_MIN: usize = 3;
+
+/// Cuts by display width because the fixed texts hold wide glyphs; no ellipsis, to keep rows plain.
+fn truncate(text: &str, width: usize) -> String {
+    let mut used = 0;
+    let mut out = String::new();
+    for c in text.chars() {
+        let w = c.width().unwrap_or(0);
+        if used + w > width {
+            break;
+        }
+        used += w;
+        out.push(c);
+    }
+    out
+}
+
+fn plain(text: &str, width: usize) -> Line<'static> {
+    Line::raw(truncate(text, width))
+}
+
+fn center_offset(text: &str, width: usize) -> usize {
+    width.saturating_sub(text.width()) / 2
+}
+
+fn centered(text: &str, width: usize) -> Line<'static> {
+    plain(
+        &format!("{}{text}", " ".repeat(center_offset(text, width))),
+        width,
+    )
+}
+
+/// A rule that stops one column short of the edge, which stays free like the cards' right margin.
+fn rule(head: &str, fill: &str, width: usize) -> Line<'static> {
+    let limit = width.saturating_sub(1);
+    let fill_len = limit.saturating_sub(head.width());
+    plain(&format!("{head}{}", fill.repeat(fill_len)), limit)
+}
+
+fn retry_hint(code: &str, width: usize) -> Line<'static> {
+    plain(&format!(" error: {code} — press R to retry"), width)
+}
+
+fn composer(width: usize) -> Vec<Line<'static>> {
+    let hint_col = HINT_COL_MAX.min(width.saturating_sub(1 + HINT.len()));
+    let hint_row = if hint_col >= HINT_COL_MIN {
+        format!(" ┆{}{HINT}", " ".repeat(hint_col - 2))
+    } else {
+        " ┆".to_string()
+    };
+    vec![
+        plain(" ┆", width),
+        plain(" ◌  What did you ship?", width),
+        plain(&hint_row, width),
+        plain(" ┆", width),
+    ]
+}
+
+fn rail(commit: &Commit, ctx: &RenderCtx, width: usize) -> Line<'static> {
+    let color = theme::lane_color(commit.author.effective_lane(), ctx.truecolor);
+    let limit = width.saturating_sub(1);
+    if limit < 2 {
+        return plain(" ", limit);
+    }
+    Line::from(vec![
+        Span::raw(" "),
+        Span::styled("│", Style::new().fg(color)),
+    ])
+}
+
+fn new_commits_banner(count: u32, width: usize) -> Line<'static> {
+    let text = if count == 1 {
+        "↑ 1 new commit".to_string()
+    } else {
+        format!("↑ {count} new commits")
+    };
+    let offset = center_offset(&text, width);
+    Line::from(vec![
+        Span::raw(" ".repeat(offset)),
+        Span::styled(
+            truncate(&text, width.saturating_sub(offset)),
+            theme::current_style(),
+        ),
+    ])
+}
+
+/// What the row builders share, so that suggestions and listed cards are drawn alike.
+struct Env<'a> {
+    ctx: RenderCtx,
+    own: Option<&'a str>,
+    width: usize,
+}
+
+impl Env<'_> {
+    /// The rail row followed by the card; the card is everything after the first row.
+    fn card_rows(
+        &self,
+        commit: &Commit,
+        node: Node,
+        selected: bool,
+        replies_expanded: bool,
+    ) -> Vec<Line<'static>> {
+        let card_w = u16::try_from(self.width.saturating_sub(1)).unwrap_or(u16::MAX);
+        let opts = CardOptions {
+            node,
+            is_own: self.own == Some(commit.author.username.as_str()),
+            replies_expanded,
+            ..CardOptions::default()
+        };
+        let mut card = card_lines(
+            CardInput::Commit(commit),
+            &opts,
+            &self.ctx,
+            card_w,
+            &Prefix::default(),
+        );
+        if selected {
+            apply_selection(&mut card, &self.ctx, card_w);
+        }
+        let mut rows = vec![rail(commit, &self.ctx, self.width)];
+        rows.extend(card);
+        rows
+    }
+}
+
 /// Builds the list rows shared by drawing and scroll maths, so both agree on card heights.
-pub fn rows(feed: &Feed, _key: FeedKey, app: &App, width: u16) -> FeedRows {
-    let ctx = render_ctx(app);
+pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
     let own = match app.session() {
         Session::SignedIn(me) => Some(me.handle.as_str()),
         Session::Guest => None,
     };
+    let env = Env {
+        ctx: render_ctx(app),
+        own,
+        width: usize::from(width),
+    };
+    let w = env.width;
+    let is_log = matches!(key, FeedKey::Log(_));
+    let chronological = is_log && !feed.is_ranked;
     let mut out = FeedRows::default();
-    for commit in &feed.items {
-        out.lines.push(Line::raw("│"));
-        let opts = CardOptions {
-            is_own: own == Some(commit.author.username.as_str()),
-            replies_expanded: feed.expanded.contains(&commit.id),
-            ..CardOptions::default()
+
+    if is_log && own.is_some() {
+        out.lines.extend(composer(w));
+    }
+    if chronological && feed.new_commits > 0 {
+        out.lines.push(new_commits_banner(feed.new_commits, w));
+    }
+
+    if feed.items.is_empty() {
+        out.lines.extend(empty_state(feed, key, &env));
+        return out;
+    }
+
+    let offset = env.ctx.local_offset;
+    let mut previous: Option<&Commit> = None;
+    for (i, commit) in feed.items.iter().enumerate() {
+        let mut boundary = false;
+        if chronological {
+            let day = commit.created_at.to_offset(offset).date();
+            if previous.is_none_or(|p| p.created_at.to_offset(offset).date() != day) {
+                let label = day_label(commit.created_at, env.ctx.now, offset);
+                out.lines.push(rule(&format!(" ╎ ── {label} "), "─", w));
+                boundary = true;
+            }
+            if i > 0 && app.last_visit() == Some(commit.id.as_str()) {
+                out.lines.push(rule(" ╌╌ HEAD@{last visit} ", "╌", w));
+                boundary = true;
+            }
+        }
+        let same_author = chronological
+            && !boundary
+            && previous.is_some_and(|p| p.author.username == commit.author.username);
+        let node = if same_author {
+            Node::SameAuthor
+        } else {
+            Node::Normal
         };
-        let lines = card_lines(
-            CardInput::Commit(commit),
-            &opts,
-            &ctx,
-            width,
-            &Prefix::default(),
+        let rows = env.card_rows(
+            commit,
+            node,
+            i == feed.selected,
+            feed.expanded.contains(&commit.id),
         );
         out.cards.push(CardSpan {
-            start: out.lines.len(),
-            height: lines.len(),
+            start: out.lines.len() + 1,
+            height: rows.len() - 1,
         });
-        out.lines.extend(lines);
+        out.lines.extend(rows);
+        previous = Some(commit);
+    }
+
+    if feed.pending.as_ref().is_some_and(|p| p.append) {
+        out.lines.push(plain(" ┊ (loading more...)", w));
+    } else if let LoadState::Failed { code, append: true } = &feed.load {
+        out.lines.push(retry_hint(code, w));
+    } else if feed.next_cursor.is_none() {
+        out.lines.push(plain(
+            " ○ That's the root commit. There's nothing before it.",
+            w,
+        ));
     }
     out
+}
+
+fn empty_state(feed: &Feed, key: FeedKey, env: &Env) -> Vec<Line<'static>> {
+    let w = env.width;
+    if feed.pending.is_some() {
+        return vec![plain(" ┊ (loading...)", w)];
+    }
+    if let LoadState::Failed { code, .. } = &feed.load {
+        return vec![retry_hint(code, w)];
+    }
+    if !feed.loaded_once {
+        return Vec::new();
+    }
+    match key {
+        FeedKey::Saved => vec![
+            Line::raw(""),
+            Line::raw(""),
+            centered("fatal: no saved commits yet", w),
+            Line::raw(""),
+            centered("press b on any commit to save it", w),
+        ],
+        FeedKey::Log(LogTab::Following) if !feed.suggestions.is_empty() => {
+            // Suggestions never enter `cards`, so they cannot be selected.
+            let mut lines = vec![plain(" $ who --should-i-follow", w)];
+            for commit in &feed.suggestions {
+                lines.extend(env.card_rows(commit, Node::Normal, false, false));
+            }
+            lines
+        }
+        FeedKey::Log(_) => vec![plain(" fatal: your log does not have any commits yet", w)],
+    }
 }

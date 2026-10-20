@@ -52,4 +52,6 @@ pub fn draw(app: &App, frame: &mut Frame) {
 #[cfg(test)]
 mod card_tests;
 #[cfg(test)]
+mod feed_tests;
+#[cfg(test)]
 mod tests;
