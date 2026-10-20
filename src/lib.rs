@@ -9,6 +9,7 @@ pub mod layout;
 pub mod model;
 pub mod notifications;
 pub mod profile;
+pub mod runtime;
 pub mod settings;
 pub mod thread;
 pub mod timefmt;
@@ -23,8 +24,12 @@ mod notifications_tests;
 #[cfg(test)]
 mod profile_tests;
 #[cfg(test)]
+mod session_tests;
+#[cfg(test)]
 mod settings_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
 mod thread_tests;
+#[cfg(test)]
+mod toast_tests;

@@ -583,14 +583,53 @@ async fn device_not_approved_keeps_its_code() {
 }
 
 #[tokio::test]
-async fn user_blocked_ignores_the_extra_user_field() {
+async fn user_blocked_carries_the_user_of_the_body() {
+    let user: serde_json::Value =
+        serde_json::from_str::<serde_json::Value>(USER).unwrap()["data"].clone();
+    let body = serde_json::json!({"message": "Blocked", "code": "user_blocked", "user": user});
+    let err = me_error(error_response(403, &body.to_string())).await;
+
+    assert_eq!(err.code(), "user_blocked");
+    let expected: crate::model::UserResponse = parse(USER);
+    assert!(matches!(
+        err.kind,
+        super::error::ErrorKind::Http { blocked_user: Some(ref u), .. } if **u == expected.data
+    ));
+}
+
+#[tokio::test]
+async fn other_codes_carry_no_blocked_user_even_if_the_body_has_a_user() {
     let err = me_error(error_response(
         403,
-        r#"{"message":"Blocked","code":"user_blocked","user":{"id":"u","username":"x"}}"#,
+        r#"{"message":"No","code":"forbidden","user":{"id":"u","username":"x"}}"#,
+    ))
+    .await;
+
+    assert!(matches!(
+        err.kind,
+        super::error::ErrorKind::Http {
+            blocked_user: None,
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn a_user_blocked_body_without_a_readable_user_carries_none() {
+    let err = me_error(error_response(
+        403,
+        r#"{"message":"Blocked","code":"user_blocked","user":{"id":"u"}}"#,
     ))
     .await;
 
     assert_eq!(err.code(), "user_blocked");
+    assert!(matches!(
+        err.kind,
+        super::error::ErrorKind::Http {
+            blocked_user: None,
+            ..
+        }
+    ));
 }
 
 #[tokio::test]

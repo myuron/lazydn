@@ -3,7 +3,7 @@ use time::Duration;
 use time::macros::datetime;
 use unicode_width::UnicodeWidthStr;
 
-use crate::action::Action;
+use crate::action::{Action, Failure};
 use crate::app::{App, Me, Prefs, Theme};
 use crate::model::{Lane, Rgb};
 use crate::profile_tests::user_of;
@@ -490,7 +490,7 @@ fn a_failed_list_shows_the_retry_hint_and_the_other_list_is_kept() {
     let effects = open_safety(&mut app);
     app.update(Action::MutedFailed {
         req: muted_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     load_blocked(&mut app, &effects, &["carol"], None);
     assert_eq!(

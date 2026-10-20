@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// What went wrong, so the UI can pick a message and decide whether to retry.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     /// The server answered with a non-success status.
     Http {
@@ -13,6 +13,8 @@ pub enum ErrorKind {
         message: String,
         /// Seconds from `Retry-After`, when sent.
         retry_after: Option<u64>,
+        /// The `user` of a `user_blocked` body: the account that blocked the caller.
+        blocked_user: Option<Box<crate::model::User>>,
     },
     /// The request did not complete: connection failure or timeout.
     Network(String),
@@ -29,7 +31,7 @@ pub enum ErrorKind {
 }
 
 /// The failure of one API call.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ApiError {
     /// The failure category.
     pub kind: ErrorKind,

@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::{Block, Paragraph};
 
-use crate::app::{App, Me, Session};
+use crate::app::{App, ConnState, Me, Session};
 
 const KEYS: &str =
     " j/k  move     ↵  open\n c    commit   r  reply\n s    star     o  replies\n ?    all keys";
@@ -38,6 +38,14 @@ fn me_text(me: &Me) -> String {
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let mut y = 0;
     match app.session() {
+        Session::Restoring => {
+            let text = if app.conn_state() == ConnState::Offline {
+                " offline — retrying"
+            } else {
+                " restoring session…"
+            };
+            boxed(frame, area, &mut y, 3, "Session", text.into());
+        }
         Session::Guest => boxed(
             frame,
             area,

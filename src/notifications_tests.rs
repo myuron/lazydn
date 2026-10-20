@@ -4,7 +4,7 @@ use time::format_description::well_known::Rfc3339;
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
 
-use crate::action::{Action, Effect};
+use crate::action::{Action, Effect, Failure};
 use crate::app::{App, Me, Screen, Session};
 use crate::feed::{LoadState, ReqId};
 use crate::feed_tests::started;
@@ -196,7 +196,7 @@ fn thread_fetches(effects: &[Effect]) -> Vec<String> {
 pub(crate) fn me_of(app: &App) -> Me {
     match app.session() {
         Session::SignedIn(me) => me.clone(),
-        Session::Guest => panic!("the app is not signed in"),
+        Session::Guest | Session::Restoring => panic!("the app is not signed in"),
     }
 }
 
@@ -320,7 +320,7 @@ fn tick_requests_the_current_user_again_after_a_failure() {
     let (mut app, init) = started(120, 40);
     app.update(Action::MeFailed {
         req: me_req(&init),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let effects = app.update(Action::Tick(NOW + Duration::seconds(30)));
     assert_eq!(me_fetches(&effects), 1);
@@ -387,7 +387,7 @@ fn me_loaded_for_a_superseded_request_is_dropped() {
     let (mut app, init) = started(120, 40);
     app.update(Action::MeFailed {
         req: me_req(&init),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let current = app.update(Action::Tick(NOW + Duration::seconds(30)));
 
@@ -409,7 +409,7 @@ fn me_failed_keeps_the_current_values() {
     let before = me_of(&app);
     app.update(Action::MeFailed {
         req: me_req(&init),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(me_of(&app), before);
 
@@ -626,7 +626,7 @@ fn a_failure_keeps_the_list_and_records_the_code() {
     let effects = type_str(&mut app, "R");
     app.update(Action::NotificationsFailed {
         req: notif_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let state = app.notifications();
     assert_eq!(ids(&app), vec!["n0", "n1"]);
@@ -640,7 +640,7 @@ fn a_failure_of_a_superseded_request_is_dropped() {
     type_str(&mut app, "R");
     app.update(Action::NotificationsFailed {
         req: notif_req(&first),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert!(matches!(app.notifications().load, LoadState::Idle));
     assert!(app.notifications().pending.is_some());
@@ -976,7 +976,7 @@ fn a_failed_prefetch_keeps_the_list_and_marks_the_append() {
     let effects = type_str(&mut app, "G");
     app.update(Action::NotificationsFailed {
         req: notif_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(ids(&app).len(), 6);
     assert!(matches!(
@@ -1047,7 +1047,7 @@ fn an_appended_notification_replaces_the_one_of_the_same_group() {
 
 // --- 10. groups -------------------------------------------------------------
 
-fn grouped(kind: &str, event_count: u32) -> Value {
+pub(crate) fn grouped(kind: &str, event_count: u32) -> Value {
     merge(
         notif_json("n0", kind, 60),
         json!({ "event_count": event_count, "actors_count": event_count }),
@@ -1195,7 +1195,7 @@ fn a_failed_group_request_records_the_code() {
     app.update(Action::GroupFailed {
         id: "n0".into(),
         req: group_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let group = group_of(&app, "g-n0");
     assert!(group.pending.is_none());

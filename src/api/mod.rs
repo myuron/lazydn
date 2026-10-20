@@ -32,4 +32,4 @@ mod request_tests;
 #[cfg(test)]
 mod sign_tests;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;

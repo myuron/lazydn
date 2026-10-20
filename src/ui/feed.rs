@@ -2,7 +2,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::{App, LogTab, Session};
+use crate::app::{App, ConnState, LogTab, Session};
 use crate::feed::{Feed, FeedKey, LoadState};
 use crate::model::{Commit, ThreadItem};
 use crate::timefmt::day_label;
@@ -45,7 +45,7 @@ pub fn render_ctx(app: &App) -> RenderCtx {
         ascii: prefs.ascii,
         pasteis_mode: match app.session() {
             Session::SignedIn(me) => me.pasteis_mode,
-            Session::Guest => false,
+            Session::Guest | Session::Restoring => false,
         },
         reply_preview_limit: prefs.reply_preview_limit,
     }
@@ -186,7 +186,7 @@ impl Env<'_> {
 pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
     let own = match app.session() {
         Session::SignedIn(me) => Some(me.handle.as_str()),
-        Session::Guest => None,
+        Session::Guest | Session::Restoring => None,
     };
     let env = Env {
         ctx: render_ctx(app),
@@ -198,9 +198,19 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
     let chronological = is_log && !feed.is_ranked;
     let mut out = FeedRows::default();
 
+    if matches!(app.session(), Session::Restoring) && is_log {
+        let text = if app.conn_state() == ConnState::Offline {
+            " offline — retrying"
+        } else {
+            " restoring session…"
+        };
+        out.lines.push(plain(text, w));
+        return out;
+    }
     if is_log && own.is_some() {
         out.lines.extend(composer(w));
     }
+
     if chronological && feed.new_commits > 0 {
         out.lines.push(new_commits_banner(feed.new_commits, w));
     }

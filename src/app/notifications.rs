@@ -7,7 +7,7 @@ use crate::model::{
 use crate::notifications::{Filter, GroupList};
 
 /// Seconds between two requests for the current user.
-const ME_INTERVAL_SECS: i64 = 30;
+pub(super) const ME_INTERVAL_SECS: i64 = 30;
 
 impl From<&MeResponse> for Me {
     fn from(response: &MeResponse) -> Self {
@@ -64,9 +64,10 @@ impl App {
     }
 
     pub(super) fn poll_me(&mut self) -> Option<Effect> {
+        let wait = self.me_wait_secs();
         let due = self
             .last_me_fetch
-            .is_some_and(|t| (self.now - t).whole_seconds() >= ME_INTERVAL_SECS);
+            .is_some_and(|t| (self.now - t).whole_seconds() >= wait);
         if due { self.request_me() } else { None }
     }
 
@@ -163,13 +164,14 @@ impl App {
         }
     }
 
-    pub(super) fn apply_notifications_failed(&mut self, req: ReqId, code: String) {
+    pub(super) fn apply_notifications_failed(&mut self, req: ReqId, code: String) -> bool {
         let append = match &self.notifications.pending {
             Some(p) if p.req == req => p.append,
-            _ => return,
+            _ => return false,
         };
         self.notifications.pending = None;
         self.notifications.load = LoadState::Failed { code, append };
+        true
     }
 
     // --- filters ------------------------------------------------------------

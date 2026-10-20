@@ -3,12 +3,21 @@ use std::collections::HashMap;
 use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
+mod key_status;
 mod notifications;
 mod profile;
+mod session;
 mod settings;
+mod status;
 mod thread;
+mod toast;
 
-use crate::action::{Action, Effect};
+pub use key_status::KeyStatus;
+pub use status::ConnState;
+pub use toast::{Toast, ToastKind};
+
+use crate::action::{Action, Effect, Failure};
+use crate::api::client::RateLimit;
 use crate::feed::{Feed, FeedKey, LoadState, ReqId, settle_scroll};
 use crate::layout::LayoutMode;
 use crate::model::Lane;
@@ -42,6 +51,8 @@ pub struct Me {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Session {
     Guest,
+    /// A device key exists and the server has not yet confirmed it; the user is not known.
+    Restoring,
     SignedIn(Me),
 }
 
@@ -203,12 +214,35 @@ pub struct App {
     prefs: Prefs,
     last_visit: Option<String>,
     next_req: u64,
+    toast: Option<Toast>,
+    conn: ConnState,
+    rate: Option<RateLimit>,
+    host_label: Option<String>,
+    key_status: KeyStatus,
+    /// Consecutive failed attempts to confirm the session; sets the retry delay while restoring.
+    restore_failures: u32,
 }
 
 impl App {
     pub fn new(session: Session, now: OffsetDateTime, local_offset: UtcOffset) -> Self {
+        // A restoring session exists only because a key was found.
+        let key_status = if matches!(session, Session::Restoring) {
+            KeyStatus::Present
+        } else {
+            KeyStatus::Absent
+        };
+        Self::with_key_status(session, now, local_offset, key_status)
+    }
+
+    /// Starts as `new` does, and tells the app what main found when it looked for the device key.
+    pub fn with_key_status(
+        session: Session,
+        now: OffsetDateTime,
+        local_offset: UtcOffset,
+        key_status: KeyStatus,
+    ) -> Self {
         let guest = matches!(session, Session::Guest);
-        Self {
+        let mut app = Self {
             screen: Screen::Log(if guest {
                 LogTab::Latest
             } else {
@@ -238,10 +272,25 @@ impl App {
             prefs: Prefs::default(),
             last_visit: None,
             next_req: 0,
+            toast: None,
+            conn: ConnState::default(),
+            rate: None,
+            host_label: None,
+            key_status,
+            restore_failures: 0,
+        };
+        if let KeyStatus::Unreadable { error, path } = &app.key_status {
+            let text = toast::key_error_text(error, path);
+            app.show_toast(ToastKind::Error, text);
         }
+        app
     }
 
     pub fn update(&mut self, action: Action) -> Vec<Effect> {
+        if let Some(effects) = self.handle_rejection(&action) {
+            return effects;
+        }
+        let mut failure_toast: Option<String> = None;
         let mut effects = Vec::new();
         match action {
             Action::Quit => return vec![Effect::Quit],
@@ -307,7 +356,12 @@ impl App {
                 }
             }
             Action::OpenHelp => self.modal = Some(Modal::Help),
-            Action::OpenSignIn => self.modal = Some(Modal::SignIn),
+            Action::OpenSignIn => {
+                if !matches!(self.session, Session::Restoring) {
+                    self.modal = Some(Modal::SignIn);
+                }
+            }
+
             Action::CloseModal => self.modal = None,
             Action::Commit => {
                 if matches!(self.session, Session::Guest) {
@@ -316,6 +370,7 @@ impl App {
             }
             Action::Tick(now) => {
                 self.now = now;
+                self.expire_toast();
                 effects.extend(self.poll_me());
                 effects.extend(self.poll());
             }
@@ -326,9 +381,13 @@ impl App {
                     .or_default()
                     .apply_loaded(req, page, now);
             }
-            Action::FeedFailed { key, req, code } => {
-                self.feeds.entry(key).or_default().apply_failed(req, &code);
+            Action::FeedFailed { key, req, failure } => {
+                let feed = self.feeds.entry(key).or_default();
+                if feed.apply_failed(req, &failure.code) && !feed.items.is_empty() {
+                    failure_toast = Some(toast::failure_text(&failure));
+                }
             }
+
             Action::NewCommits { key, since, count } => {
                 self.feeds
                     .entry(key)
@@ -348,23 +407,54 @@ impl App {
             Action::ToggleAllFilters => effects.extend(self.notif_toggle_all_filters()),
             Action::SwitchSettingsTab(tab) => effects.extend(self.settings_switch_tab(tab)),
             Action::MutedLoaded { req, page } => self.apply_muted_loaded(req, page),
-            Action::MutedFailed { req, code } => self.apply_muted_failed(req, code),
+            Action::MutedFailed { req, failure } => {
+                if self.apply_muted_failed(req, failure.code.clone())
+                    && !self.settings.muted.users.is_empty()
+                {
+                    failure_toast = Some(toast::failure_text(&failure));
+                }
+            }
+
             Action::BlockedLoaded { req, page } => self.apply_blocked_loaded(req, page),
-            Action::BlockedFailed { req, code } => self.apply_blocked_failed(req, code),
-            Action::MeLoaded { req, response } => self.apply_me_loaded(req, &response),
+            Action::BlockedFailed { req, failure } => {
+                if self.apply_blocked_failed(req, failure.code.clone())
+                    && !self.settings.blocked.users.is_empty()
+                {
+                    failure_toast = Some(toast::failure_text(&failure));
+                }
+            }
+
+            Action::MeLoaded { req, response } => {
+                if matches!(self.session, Session::Restoring) {
+                    effects.extend(self.finish_restoring(req, &response));
+                } else {
+                    self.apply_me_loaded(req, &response);
+                }
+            }
             Action::MeFailed { req, .. } => {
+                self.restore_failed(req);
                 if self.me_pending == Some(req) {
                     self.me_pending = None;
                 }
             }
+
             Action::NotificationsLoaded { req, page } => {
                 effects.extend(self.apply_notifications_loaded(req, *page));
             }
-            Action::NotificationsFailed { req, code } => {
-                self.apply_notifications_failed(req, code);
+            Action::NotificationsFailed { req, failure } => {
+                if self.apply_notifications_failed(req, failure.code.clone())
+                    && !self.notifications.items.is_empty()
+                {
+                    failure_toast = Some(toast::failure_text(&failure));
+                }
             }
+
             Action::GroupLoaded { id, req, page } => self.apply_group_loaded(&id, req, page),
-            Action::GroupFailed { id, req, code } => self.apply_group_failed(&id, req, code),
+            Action::GroupFailed {
+                id,
+                req,
+                failure: Failure { code, .. },
+            } => self.apply_group_failed(&id, req, code),
             Action::UserLoaded {
                 username,
                 req,
@@ -373,7 +463,7 @@ impl App {
             Action::UserFailed {
                 username,
                 req,
-                code,
+                failure: Failure { code, .. },
                 blocked_user,
             } => self.apply_user_failed(&username, req, code, blocked_user.map(|u| *u)),
             Action::ProfileFeedLoaded {
@@ -386,8 +476,18 @@ impl App {
                 username,
                 tab,
                 req,
-                code,
-            } => self.apply_feed_failed(&username, tab, req, &code),
+                failure,
+            } => {
+                if self.apply_feed_failed(&username, tab, req, &failure.code) {
+                    let has_items = self
+                        .profile(&username)
+                        .is_some_and(|s| !s.feed(tab).items.is_empty());
+                    if has_items {
+                        failure_toast = Some(toast::failure_text(&failure));
+                    }
+                }
+            }
+
             Action::ConnectionsLoaded {
                 username,
                 tab,
@@ -398,11 +498,22 @@ impl App {
                 username,
                 tab,
                 req,
-                code,
-            } => self.apply_conn_failed(&username, tab, req, code),
+                failure,
+            } => {
+                if self.apply_conn_failed(&username, tab, req, failure.code.clone()) {
+                    let has_items = self
+                        .connections(&username, tab)
+                        .is_some_and(|s| !s.users.is_empty());
+                    if has_items {
+                        failure_toast = Some(toast::failure_text(&failure));
+                    }
+                }
+            }
+
             Action::OpenConnections(tab) => effects.extend(self.open_connections(tab)),
             Action::SwitchProfileTab(tab) => effects.extend(self.profile_switch_tab(tab)),
             Action::SwitchConnTab(tab) => effects.extend(self.conn_switch_tab(tab)),
+            Action::ApiStatus { rate, online } => self.apply_api_status(rate, online),
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
                 if let Some(state) = self.threads.get_mut(&id)
@@ -417,7 +528,11 @@ impl App {
                     state.scroll = 0;
                 }
             }
-            Action::ThreadFailed { id, req, code } => {
+            Action::ThreadFailed {
+                id,
+                req,
+                failure: Failure { code, .. },
+            } => {
                 if let Some(state) = self.threads.get_mut(&id)
                     && state.main_pending == Some(req)
                 {
@@ -444,14 +559,21 @@ impl App {
                 thread,
                 parent,
                 req,
-                code,
+                failure,
             } => {
                 let kept = self.selected_entry(&thread);
-                if let Some(list) = self.reply_list_mut(&thread, &parent) {
-                    list.apply_failed(req, &code);
+                if let Some(list) = self.reply_list_mut(&thread, &parent)
+                    && list.apply_failed(req, &failure.code)
+                    && !list.items.is_empty()
+                {
+                    failure_toast = Some(toast::failure_text(&failure));
                 }
+
                 self.restore_selection(&thread, kept);
             }
+        }
+        if let Some(text) = failure_toast {
+            self.show_toast(ToastKind::Error, text);
         }
         self.reconcile_scroll();
         effects
@@ -460,12 +582,13 @@ impl App {
     pub fn home_tab(&self) -> LogTab {
         match self.session {
             Session::Guest => LogTab::Latest,
+            Session::Restoring => LogTab::Following,
             Session::SignedIn(_) => LogTab::Following,
         }
     }
 
     fn needs_sign_in(&self, screen: &Screen) -> bool {
-        if !matches!(self.session, Session::Guest) {
+        if matches!(self.session, Session::SignedIn(_)) {
             return false;
         }
         // Relies on own_handle() being empty for a guest, which is what makes g p and the Nav target Profile(""); other profiles are public.
@@ -481,7 +604,10 @@ impl App {
     /// Returns false after opening the sign-in dialog when a guest targets a protected screen.
     fn guard_sign_in(&mut self, screen: &Screen) -> bool {
         if self.needs_sign_in(screen) {
-            self.modal = Some(Modal::SignIn);
+            // The dialog would ask for a key that is already being checked.
+            if matches!(self.session, Session::Guest) {
+                self.modal = Some(Modal::SignIn);
+            }
             return false;
         }
         true
@@ -591,7 +717,7 @@ impl App {
     pub fn own_handle(&self) -> String {
         match &self.session {
             Session::SignedIn(me) => me.handle.clone(),
-            Session::Guest => String::new(),
+            Session::Guest | Session::Restoring => String::new(),
         }
     }
 

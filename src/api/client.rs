@@ -619,6 +619,22 @@ fn http_error(
             message: field("message")
                 .unwrap_or_else(|| status.canonical_reason().unwrap_or("error").to_string()),
             retry_after: header_u64(headers, RETRY_AFTER.as_str()),
+            blocked_user: field_code_is_user_blocked(&json)
+                .then(|| {
+                    json.as_ref()
+                        .and_then(|v| v.get("user"))
+                        .and_then(|u| serde_json::from_value::<User>(u.clone()).ok())
+                        .map(Box::new)
+                })
+                .flatten(),
         },
     }
+}
+
+/// Only a blocked answer carries a `user`; on other errors the field is not the blocker.
+fn field_code_is_user_blocked(json: &Option<serde_json::Value>) -> bool {
+    json.as_ref()
+        .and_then(|v| v.get("code"))
+        .and_then(|v| v.as_str())
+        == Some("user_blocked")
 }

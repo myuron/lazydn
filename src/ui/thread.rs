@@ -233,7 +233,7 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
         ctx: render_ctx(app),
         own: match app.session() {
             Session::SignedIn(me) => Some(me.handle.as_str()),
-            Session::Guest => None,
+            Session::Guest | Session::Restoring => None,
         },
         width,
     };

@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
-use crate::action::Action;
+use crate::action::{Action, Failure};
 use crate::app::App;
 use crate::feed::{FeedKey, FeedPage};
 use crate::feed_tests::{
@@ -626,7 +626,7 @@ fn failed_append_shows_the_retry_hint_after_the_last_card() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "rate_limited".into(),
+        failure: Failure::new("rate_limited"),
     });
     let t = lines_of(&app, FOLLOWING);
     assert_eq!(
@@ -643,7 +643,7 @@ fn failed_refresh_keeps_the_list_without_an_error_line() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let t = lines_of(&app, FOLLOWING);
     assert!(t.iter().all(|l| !l.contains("error:")), "{t:?}");
@@ -680,7 +680,7 @@ fn first_load_failure_shows_the_error_with_its_code() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let mut expected = composer();
     expected.push(" error: http_500 — press R to retry".to_string());
@@ -855,7 +855,7 @@ fn l8_first_load_failure_shows_the_retry_hint() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "rate_limited".into(),
+        failure: Failure::new("rate_limited"),
     });
     snapshot!("log_first_error", app);
 }
@@ -961,7 +961,7 @@ fn every_state_keeps_all_rows_within_a_20_column_list() {
     failed.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "rate_limited".into(),
+        failure: Failure::new("rate_limited"),
     });
     assert_fits(&rows_at(&failed, FOLLOWING), NARROW);
 
@@ -985,7 +985,7 @@ fn every_state_keeps_all_rows_within_a_20_column_list() {
     listed.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "rate_limited".into(),
+        failure: Failure::new("rate_limited"),
     });
     assert_fits(&rows_at(&listed, FOLLOWING), NARROW);
 
@@ -1023,7 +1023,7 @@ fn append_failure_line_scrolls_into_view_at_the_end_of_a_long_list() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "rate_limited".into(),
+        failure: Failure::new("rate_limited"),
     });
     assert_eq!(
         lines_of(&app, FOLLOWING).last().map(String::as_str),
@@ -1064,4 +1064,39 @@ fn days_are_split_by_the_local_offset_not_by_utc() {
     let app = following_at_offset(jst, same_in_jst);
     let t = lines_of(&app, FOLLOWING);
     assert_eq!(t.iter().filter(|l| l.starts_with(" ╎")).count(), 1, "{t:?}");
+}
+
+// --- failed refresh over a list (M5a): the toast carries the failure -------------------
+
+#[test]
+fn failed_refresh_over_a_list_with_a_next_cursor_shows_neither_root_nor_error_line() {
+    let mut app = following(120, 40, page_of(alternating(2), Some("next")));
+    let effects = type_str(&mut app, "R");
+    app.update(Action::FeedFailed {
+        key: FOLLOWING,
+        req: first_req(&effects),
+        failure: Failure::new("http_500"),
+    });
+    let t = lines_of(&app, FOLLOWING);
+    assert!(
+        t.iter()
+            .all(|l| !l.contains("error:") && l != ROOT && l != LOADING_MORE),
+        "{t:?}"
+    );
+    assert_eq!(app.toast().map(|t| t.text.as_str()), Some("http_500"));
+}
+
+#[test]
+fn failed_refresh_over_the_last_page_keeps_the_root_line_and_shows_no_error_line() {
+    let mut app = following(120, 40, page_of(alternating(2), None));
+    let effects = type_str(&mut app, "R");
+    app.update(Action::FeedFailed {
+        key: FOLLOWING,
+        req: first_req(&effects),
+        failure: Failure::new("http_500"),
+    });
+    let t = lines_of(&app, FOLLOWING);
+    assert!(t.iter().all(|l| !l.contains("error:")), "{t:?}");
+    assert_eq!(t.last().map(String::as_str), Some(ROOT));
+    assert_eq!(app.toast().map(|t| t.text.as_str()), Some("http_500"));
 }

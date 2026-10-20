@@ -1,11 +1,31 @@
 use time::OffsetDateTime;
 
+use crate::api::client::RateLimit;
 use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab};
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::model::{
     GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User, UserResponse,
 };
 use crate::notifications::Filter;
+
+/// Why a request failed, as the executor reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failure {
+    /// An API error code, or `http_<status>`, `network`, `decode`, `sign` and so on.
+    pub code: String,
+    /// Seconds from `Retry-After`, when the server sent it.
+    pub retry_after: Option<u64>,
+}
+
+impl Failure {
+    /// A failure that carries no `Retry-After`.
+    pub fn new(code: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            retry_after: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -35,11 +55,10 @@ pub enum Action {
         req: ReqId,
         page: FeedPage,
     },
-    /// `code` is an API error code or `http_<status>`.
     FeedFailed {
         key: FeedKey,
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     NewCommits {
         key: FeedKey,
@@ -57,11 +76,10 @@ pub enum Action {
         req: ReqId,
         response: Box<ThreadResponse>,
     },
-    /// `code` is an API error code or `http_<status>`.
     ThreadFailed {
         id: String,
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     /// `parent == thread` for the first level of replies.
     RepliesLoaded {
@@ -74,7 +92,7 @@ pub enum Action {
         thread: String,
         parent: String,
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     UserLoaded {
         username: String,
@@ -85,7 +103,7 @@ pub enum Action {
     UserFailed {
         username: String,
         req: ReqId,
-        code: String,
+        failure: Failure,
         blocked_user: Option<Box<User>>,
     },
     ProfileFeedLoaded {
@@ -98,7 +116,7 @@ pub enum Action {
         username: String,
         tab: ProfileTab,
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     ConnectionsLoaded {
         username: String,
@@ -110,16 +128,15 @@ pub enum Action {
         username: String,
         tab: ConnTab,
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     MeLoaded {
         req: ReqId,
         response: Box<MeResponse>,
     },
-    /// `code` is an API error code or `http_<status>`.
     MeFailed {
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     NotificationsLoaded {
         req: ReqId,
@@ -127,7 +144,7 @@ pub enum Action {
     },
     NotificationsFailed {
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     /// `id` is the id of the notification that was asked, not a `group_id`.
     GroupLoaded {
@@ -138,7 +155,7 @@ pub enum Action {
     GroupFailed {
         id: String,
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     /// `1`..`6` on Notifications.
     ToggleFilter(Filter),
@@ -158,7 +175,7 @@ pub enum Action {
     },
     MutedFailed {
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     BlockedLoaded {
         req: ReqId,
@@ -166,15 +183,24 @@ pub enum Action {
     },
     BlockedFailed {
         req: ReqId,
-        code: String,
+        failure: Failure,
     },
     /// `1` / `2` on Followers / Following; replaces the screen without a history entry.
     SwitchConnTab(ConnTab),
+    /// Sent by the executor after each response. `rate: None` keeps the previous value.
+    ApiStatus {
+        rate: Option<RateLimit>,
+        online: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     Quit,
+    /// Makes later requests unsigned. The runtime applies it before it spawns the effects after it.
+    UseGuestClient,
+    /// Makes later requests signed with the device key. Applied in order like `UseGuestClient`.
+    UseSignedClient,
     FetchLog {
         tab: LogTab,
         cursor: Option<String>,

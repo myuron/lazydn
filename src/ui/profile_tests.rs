@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use time::UtcOffset;
 use unicode_width::UnicodeWidthStr;
 
-use crate::action::Action;
+use crate::action::{Action, Failure};
 use crate::app::{App, ConnTab, Me, ProfileTab, Screen, Session};
 use crate::feed_tests::list_width;
 use crate::model::{Commit, User, UserResponse};
@@ -498,7 +498,7 @@ fn a_failed_list_shows_the_retry_hint_under_the_header() {
         username: "alice".into(),
         tab: ProfileTab::Commits,
         req: commits_req(&effects, false),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let got = lines(&app, "alice");
     assert_eq!(
@@ -557,14 +557,14 @@ fn failed_profile(code: &str, blocked: Option<User>, w: u16, h: u16) -> App {
     app.update(Action::UserFailed {
         username: "bob".into(),
         req: user_req(&effects),
-        code: code.into(),
+        failure: Failure::new(code),
         blocked_user: blocked.map(Box::new),
     });
     app.update(Action::ProfileFeedFailed {
         username: "bob".into(),
         tab: ProfileTab::Commits,
         req: commits_req(&effects, false),
-        code: code.into(),
+        failure: Failure::new(code),
     });
     app
 }
@@ -787,7 +787,7 @@ fn a_loading_or_failed_first_page_shows_a_row_instead_of_users() {
         username: "alice".into(),
         tab: ConnTab::Followers,
         req: conn_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(
         conn_lines(&app, "alice", ConnTab::Followers),
@@ -1021,7 +1021,7 @@ fn error_screen(user_first: bool, user_code: &str, feed: Option<&str>) -> Vec<St
         app.update(Action::UserFailed {
             username: "bob".into(),
             req: user_req(&effects),
-            code: user_code.into(),
+            failure: Failure::new(user_code),
             blocked_user: blocked.clone(),
         });
     };
@@ -1031,7 +1031,7 @@ fn error_screen(user_first: bool, user_code: &str, feed: Option<&str>) -> Vec<St
                 username: "bob".into(),
                 tab: ProfileTab::Commits,
                 req: commits_req(&effects, false),
-                code: code.into(),
+                failure: Failure::new(code),
             });
         }
         None => deliver_commits(
@@ -1121,7 +1121,7 @@ fn a_failed_list_under_the_pinned_commit_shows_the_retry_hint() {
         username: "alice".into(),
         tab: ProfileTab::Commits,
         req: commits_req(&effects, false),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let got = lines(&app, "alice");
     assert!(position(&got, "0000pin").is_some(), "{got:#?}");
@@ -1147,4 +1147,31 @@ fn an_empty_list_under_the_pinned_commit_says_there_are_no_commits() {
         got.last().map(String::as_str),
         Some(" fatal: no commits yet")
     );
+}
+
+// --- failed refresh over a profile list (M5a): the toast carries the failure -----------
+
+#[test]
+fn failed_refresh_of_a_profile_list_with_a_next_cursor_shows_neither_root_nor_error_line() {
+    let mut app = profile_with(
+        signed_in(120, 40),
+        "alice",
+        user_resp("alice", json!({})),
+        two_posts(),
+        Some("next"),
+    );
+    let effects = key(&mut app, 'R');
+    app.update(Action::ProfileFeedFailed {
+        username: "alice".into(),
+        tab: ProfileTab::Commits,
+        req: commits_req(&effects, false),
+        failure: Failure::new("http_500"),
+    });
+    let got = lines(&app, "alice");
+    assert!(
+        got.iter()
+            .all(|l| !l.contains("error:") && !l.contains("root commit")),
+        "{got:#?}"
+    );
+    assert_eq!(app.toast().map(|t| t.text.as_str()), Some("http_500"));
 }

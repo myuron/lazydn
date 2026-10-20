@@ -1,0 +1,28 @@
+---
+source: src/ui/status_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────────────────────────────────────────────┐"
+"│▌Log  Notifs(12)  Profile  Saved  Settings                │"
+"└──────────────────────────────────────────────────────────┘"
+"┏ Log ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"┃     Following            Latest            Trending      ┃"
+"┃     ━━━━━━━━━                                            ┃"
+"┃ ┆                                                        ┃"
+"┃ ◌  What did you ship?                                    ┃"
+"┃ ┆                                    [c] Write a commit  ┃"
+"┃ ┆                                                        ┃"
+"┃ ╎ ── Thu, Oct 15 ─────────────────────────────────────── ┃"
+"┃ │                                                        ┃"
+"┃▌◉ Name alice @alice · 4d                         00b9b9b ┃"
+"┃▌│ hi @ab see…                                            ┃"
+"┃▌│ Show more                                              ┃"
+"┃▌│ ○ yes                                                  ┃"
+"┃▌│ ○ no                                                   ┃"
+"┃▌│ 4d left                                                ┃"
+"┃▌│ ★ 1  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies            ⊠ ⚑ ┃"
+"┃ │                                                        ┃"
+"┃ ◉ bob @bob · 4d          ┌──────────────────────────────┐┃"
+"┃ │ second                 │ ✗ rate_limited: retry in 12s │┃"
+"┗━━━━━━━━━━━━━━━━━━━━━━━━━━└──────────────────────────────┘┛"
+" j/k ↵ c ?                                              -/- "

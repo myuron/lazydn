@@ -46,7 +46,7 @@ fn label(item: NavItem) -> &'static str {
 fn me(app: &App) -> Option<&Me> {
     match app.session() {
         Session::SignedIn(me) => Some(me),
-        Session::Guest => None,
+        Session::Guest | Session::Restoring => None,
     }
 }
 
@@ -101,6 +101,8 @@ fn render_wide(app: &App, frame: &mut Frame, area: Rect) {
     lines.push(Line::raw(""));
     lines.push(Line::raw(match app.session() {
         Session::Guest => " [ L  Sign in ]",
+        // L does nothing until the session is confirmed, so the hint would mislead.
+        Session::Restoring => "",
         Session::SignedIn(_) => " [ c  Commit ]",
     }));
     frame.render_widget(Paragraph::new(lines), inner);
@@ -125,6 +127,7 @@ fn render_medium(app: &App, frame: &mut Frame, area: Rect) {
     lines.push(Line::raw(""));
     lines.push(Line::raw(match app.session() {
         Session::Guest => " L",
+        Session::Restoring => "",
         Session::SignedIn(_) => " +",
     }));
     frame.render_widget(Paragraph::new(lines), inner);

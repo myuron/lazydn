@@ -44,15 +44,16 @@ impl ReplyList {
         self.load = LoadState::Idle;
     }
 
-    pub fn apply_failed(&mut self, req: ReqId, code: &str) {
+    pub fn apply_failed(&mut self, req: ReqId, code: &str) -> bool {
         if self.pending != Some(req) {
-            return;
+            return false;
         }
         self.pending = None;
         self.load = LoadState::Failed {
             code: code.to_string(),
             append: !self.items.is_empty(),
         };
+        true
     }
 }
 

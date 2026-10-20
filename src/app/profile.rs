@@ -169,10 +169,10 @@ impl App {
         tab: ProfileTab,
         req: ReqId,
         code: &str,
-    ) {
-        if let Some(state) = self.profiles.get_mut(&name.to_ascii_lowercase()) {
-            state.feed_mut(tab).apply_failed(req, code);
-        }
+    ) -> bool {
+        self.profiles
+            .get_mut(&name.to_ascii_lowercase())
+            .is_some_and(|state| state.feed_mut(tab).apply_failed(req, code))
     }
 
     // --- profile selection --------------------------------------------------
@@ -370,17 +370,25 @@ impl App {
         state.loaded_once = true;
     }
 
-    pub(super) fn apply_conn_failed(&mut self, name: &str, tab: ConnTab, req: ReqId, code: String) {
+    pub(super) fn apply_conn_failed(
+        &mut self,
+        name: &str,
+        tab: ConnTab,
+        req: ReqId,
+        code: String,
+    ) -> bool {
         let Some(state) = self.connections.get_mut(&(name.to_ascii_lowercase(), tab)) else {
-            return;
+            return false;
         };
-        if let Some(p) = state.pending.clone().filter(|p| p.req == req) {
-            state.pending = None;
-            state.load = LoadState::Failed {
-                code,
-                append: p.append,
-            };
-        }
+        let Some(p) = state.pending.clone().filter(|p| p.req == req) else {
+            return false;
+        };
+        state.pending = None;
+        state.load = LoadState::Failed {
+            code,
+            append: p.append,
+        };
+        true
     }
 
     pub(super) fn conn_select(&mut self, name: &str, tab: ConnTab, index: usize) -> Vec<Effect> {

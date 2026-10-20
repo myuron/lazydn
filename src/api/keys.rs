@@ -90,15 +90,27 @@ fn write_atomic(path: &Path, mode: u32, content: &str) -> io::Result<()> {
 }
 
 impl KeyPair {
+    /// Reads the key at `path` without creating anything: `None` when the file is absent.
+    /// Call it at startup to tell whether a device key exists.
+    pub fn load(path: &Path) -> Result<Option<KeyPair>, KeyError> {
+        match std::fs::metadata(path) {
+            Ok(meta) => Ok(Some(KeyPair {
+                key: Self::read(path, &meta)?,
+            })),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(io_err(e)),
+        }
+    }
+
     /// Reads the key at `path`, or creates one when the file is absent; never overwrites.
     /// Call it at startup and before sign-in.
     pub fn load_or_create(path: &Path) -> Result<KeyPair, KeyError> {
-        let key = match std::fs::metadata(path) {
-            Ok(meta) => Self::read(path, &meta)?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Self::create(path)?,
-            Err(e) => return Err(io_err(e)),
+        let pair = match Self::load(path)? {
+            Some(pair) => pair,
+            None => KeyPair {
+                key: Self::create(path)?,
+            },
         };
-        let pair = KeyPair { key };
         // A missing .pub must not make a usable key unusable (read-only directory, say).
         let _ = pair.ensure_public_file(path);
         Ok(pair)

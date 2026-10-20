@@ -2,7 +2,8 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, ConnTab, Screen};
+use crate::api::client::RateLimit;
+use crate::app::{App, ConnState, ConnTab, Screen};
 use crate::layout::LayoutMode;
 use crate::thread::short_hash;
 use crate::ui::screens::{screen_name, tab_label};
@@ -28,11 +29,41 @@ pub fn left(mode: LayoutMode, breadcrumb: &str) -> String {
     }
 }
 
+/// The right end before any response has arrived.
 pub fn right(mode: LayoutMode) -> String {
-    match mode {
-        LayoutMode::Wide => "API -/-  ○ connecting".to_string(),
-        LayoutMode::TooSmall => String::new(),
-        _ => "-/-".to_string(),
+    right_with(mode, None, ConnState::Connecting, None)
+}
+
+/// The right end of the status line.
+/// `host` is shown only when the base URL is not the default.
+pub fn right_with(
+    mode: LayoutMode,
+    rate: Option<RateLimit>,
+    conn: ConnState,
+    host: Option<&str>,
+) -> String {
+    let count = rate.map_or_else(
+        || "-/-".to_string(),
+        |r| format!("{}/{}", r.remaining, r.limit),
+    );
+    let base = match mode {
+        LayoutMode::TooSmall => return String::new(),
+        LayoutMode::Wide => {
+            let state = match conn {
+                ConnState::Connecting => "○ connecting",
+                ConnState::Online => "● online",
+                ConnState::Offline => "○ offline",
+            };
+            format!("API {count}  {state}")
+        }
+        LayoutMode::Medium | LayoutMode::Narrow if conn == ConnState::Offline => {
+            format!("○ {count}")
+        }
+        LayoutMode::Medium | LayoutMode::Narrow => count,
+    };
+    match host {
+        Some(host) => format!("{base}  {host}"),
+        None => base,
     }
 }
 
@@ -43,7 +74,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         area,
     );
     frame.render_widget(
-        Paragraph::new(format!("{} ", right(mode))).alignment(Alignment::Right),
+        Paragraph::new(format!(
+            "{} ",
+            right_with(mode, app.rate(), app.conn_state(), app.host_label())
+        ))
+        .alignment(Alignment::Right),
         area,
     );
 }

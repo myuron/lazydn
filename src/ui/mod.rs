@@ -13,6 +13,7 @@ pub mod signin;
 pub mod statusline;
 pub mod theme;
 pub mod thread;
+pub mod toast;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -52,6 +53,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
         Some(Modal::SignIn) => signin::render(frame, area),
         None => {}
     }
+    toast::render(app, frame, area, panes.status);
 }
 
 #[cfg(test)]
@@ -64,6 +66,8 @@ mod notifications_tests;
 mod profile_tests;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod status_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

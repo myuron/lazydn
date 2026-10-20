@@ -2,7 +2,7 @@ use ratatui::text::Line;
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
-use crate::action::Action;
+use crate::action::{Action, Failure};
 use crate::app::App;
 use crate::feed_tests::list_width;
 use crate::notifications::{Filter, Filters};
@@ -496,7 +496,7 @@ fn a_failed_group_shows_what_could_not_be_loaded() {
         app.update(Action::GroupFailed {
             id: "n0".into(),
             req: group_req(&effects),
-            code: "http_500".into(),
+            failure: Failure::new("http_500"),
         });
         assert_eq!(
             texts(&app).last().map(String::as_str),
@@ -741,7 +741,7 @@ fn a_failed_first_load_shows_the_retry_hint() {
     let (mut app, effects) = on_notifications(120, 40);
     app.update(Action::NotificationsFailed {
         req: notif_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(texts(&app), vec![" error: http_500 — press R to retry"]);
 }
@@ -768,7 +768,7 @@ fn a_failed_append_shows_the_retry_hint_under_the_list() {
     let effects = type_str(&mut app, "G");
     app.update(Action::NotificationsFailed {
         req: notif_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(
         texts(&app).last().map(String::as_str),

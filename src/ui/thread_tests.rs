@@ -2,7 +2,7 @@ use crossterm::event::KeyCode;
 use serde_json::{Value, json};
 use unicode_width::UnicodeWidthStr;
 
-use crate::action::{Action, Effect};
+use crate::action::{Action, Effect, Failure};
 use crate::app::{App, Screen};
 use crate::feed::{FeedKey, FeedPage};
 use crate::feed_tests::{FOLLOWING, deliver, list_width, started};
@@ -497,7 +497,7 @@ fn fail_main(app: &mut App, effects: &[Effect], code: &str) {
     app.update(Action::ThreadFailed {
         id: LONG.into(),
         req: thread_req(effects, LONG),
-        code: code.into(),
+        failure: Failure::new(code),
     });
 }
 
@@ -542,7 +542,7 @@ fn a_failed_main_commit_hides_a_failed_replies_request() {
         thread: LONG.into(),
         parent: LONG.into(),
         req: replies_req(&effects, LONG),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     fail_main(&mut app, &effects, "commit_unavailable");
     let t: Vec<String> = lines(&app).into_iter().filter(|l| !l.is_empty()).collect();
@@ -558,7 +558,7 @@ fn a_failed_replies_request_adds_a_retry_row_below_the_main_commit() {
         thread: MAIN.into(),
         parent: MAIN.into(),
         req: replies_req(&effects, MAIN),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let sk = skeleton(&app);
     assert_eq!(
@@ -992,7 +992,7 @@ fn a_failed_child_request_shows_a_retry_row_under_its_parent() {
         thread: MAIN.into(),
         parent: "r1".into(),
         req: replies_req(&effects, "r1"),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let mut want = strings(&R1_BLOCK);
     want.extend(strings(&[
@@ -1011,7 +1011,7 @@ fn a_failed_next_first_level_page_shows_show_more_then_the_retry_row() {
         thread: MAIN.into(),
         parent: MAIN.into(),
         req: replies_req(&effects, MAIN),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let sk = skeleton(&app);
     let tail = &sk[sk.len().saturating_sub(2)..];
@@ -1042,7 +1042,7 @@ fn a_failed_refresh_shows_only_the_error_even_though_the_commit_is_known() {
     app.update(Action::ThreadFailed {
         id: MAIN.into(),
         req: thread_req(&effects, MAIN),
-        code: "commit_unavailable".into(),
+        failure: Failure::new("commit_unavailable"),
     });
     let t: Vec<String> = lines(&app).into_iter().filter(|l| !l.is_empty()).collect();
     assert_eq!(t, strings(&[" fatal: commit m1 is not available"]));

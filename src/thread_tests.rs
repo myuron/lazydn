@@ -2,7 +2,7 @@ use crossterm::event::KeyCode;
 use serde_json::{Value, json};
 use time::Duration;
 
-use crate::action::{Action, Effect};
+use crate::action::{Action, Effect, Failure};
 use crate::app::{App, LogTab, Screen};
 use crate::feed::{LoadState, ReqId};
 use crate::feed_tests::list_width;
@@ -448,7 +448,7 @@ fn a_late_thread_failure_does_not_override_a_newer_request() {
     app.update(Action::ThreadFailed {
         id: MAIN.into(),
         req: stale,
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(failed_code(&state(&app, MAIN).main_load), None);
 }
@@ -660,7 +660,7 @@ fn a_failed_thread_request_records_the_error_code() {
     app.update(Action::ThreadFailed {
         id: MAIN.into(),
         req: thread_req(&effects, MAIN),
-        code: "commit_unavailable".into(),
+        failure: Failure::new("commit_unavailable"),
     });
     let s = state(&app, MAIN);
     assert_eq!(failed_code(&s.main_load), Some("commit_unavailable"));
@@ -676,7 +676,7 @@ fn a_failed_replies_request_records_the_error_on_the_list() {
         thread: MAIN.into(),
         parent: MAIN.into(),
         req: replies_req(&effects, MAIN),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let s = state(&app, MAIN);
     let list = s.children.get(MAIN).cloned().unwrap_or_default();
@@ -720,7 +720,7 @@ fn responses_arriving_after_goto_do_not_recreate_the_state() {
         thread: MAIN.into(),
         parent: MAIN.into(),
         req: replies_req(&effects, MAIN),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert!(app.thread(MAIN).is_none());
 }
@@ -1009,7 +1009,7 @@ fn failed_prefetch_app() -> App {
         thread: MAIN.into(),
         parent: MAIN.into(),
         req: replies_req(&effects, MAIN),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     app
 }
@@ -1116,7 +1116,7 @@ fn o_after_a_failed_child_request_requests_the_children_again() {
         thread: MAIN.into(),
         parent: "r0".into(),
         req: replies_req(&effects, "r0"),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let list = state(&app, MAIN).children.get("r0").cloned();
     let list = list.unwrap_or_default();
@@ -1144,7 +1144,7 @@ fn a_thread_failure_arriving_after_goto_does_not_recreate_the_state() {
     app.update(Action::ThreadFailed {
         id: MAIN.into(),
         req: thread_req(&effects, MAIN),
-        code: "commit_unavailable".into(),
+        failure: Failure::new("commit_unavailable"),
     });
     assert!(app.thread(MAIN).is_none());
 }
@@ -1179,7 +1179,7 @@ fn a_failed_child_request_keeps_the_selection_on_the_same_item() {
         thread: MAIN.into(),
         parent: "r0".into(),
         req: replies_req(&effects, "r0"),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     press(&mut app, KeyCode::Enter);
     assert_eq!(app.screen(), Screen::Thread("r1".into()));

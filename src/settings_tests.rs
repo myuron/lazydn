@@ -1,6 +1,6 @@
 use crossterm::event::KeyCode;
 
-use crate::action::{Action, Effect};
+use crate::action::{Action, Effect, Failure};
 use crate::app::{App, Me, Modal, Prefs, Screen, SettingsTab, Theme};
 use crate::feed::{LoadState, ReqId};
 use crate::model::Page;
@@ -268,12 +268,12 @@ fn a_failure_is_kept_per_list_and_a_stale_failure_is_dropped() {
     let effects = open_safety(&mut app);
     app.update(Action::MutedFailed {
         req: ReqId(muted_req(&effects).0.wrapping_add(100)),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(app.settings().muted.load, LoadState::Idle);
     app.update(Action::MutedFailed {
         req: muted_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(
         app.settings().muted.load,
@@ -307,7 +307,7 @@ fn r_after_a_failure_retries_the_failed_list_from_the_first_page() {
     let effects = open_safety(&mut app);
     app.update(Action::MutedFailed {
         req: muted_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let again = press(&mut app, KeyCode::Char('R'));
     assert_eq!(muted_fetches(&again), vec![None]);
@@ -359,7 +359,7 @@ fn the_safety_lists_have_no_selection_to_move() {
 fn fail_muted(app: &mut App, effects: &[Effect]) {
     app.update(Action::MutedFailed {
         req: muted_req(effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
 }
 

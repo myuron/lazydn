@@ -28,15 +28,16 @@ impl UserList {
         self.loaded_once = true;
     }
 
-    fn apply_failed(&mut self, req: ReqId, code: String) {
+    fn apply_failed(&mut self, req: ReqId, code: String) -> bool {
         if self.pending.as_ref().is_none_or(|p| p.req != req) {
-            return;
+            return false;
         }
         self.pending = None;
         self.load = LoadState::Failed {
             code,
             append: false,
         };
+        true
     }
 }
 
@@ -103,11 +104,11 @@ impl App {
         self.settings.blocked.apply_loaded(req, page);
     }
 
-    pub(super) fn apply_muted_failed(&mut self, req: ReqId, code: String) {
-        self.settings.muted.apply_failed(req, code);
+    pub(super) fn apply_muted_failed(&mut self, req: ReqId, code: String) -> bool {
+        self.settings.muted.apply_failed(req, code)
     }
 
-    pub(super) fn apply_blocked_failed(&mut self, req: ReqId, code: String) {
-        self.settings.blocked.apply_failed(req, code);
+    pub(super) fn apply_blocked_failed(&mut self, req: ReqId, code: String) -> bool {
+        self.settings.blocked.apply_failed(req, code)
     }
 }

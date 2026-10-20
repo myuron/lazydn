@@ -305,7 +305,7 @@ pub fn rows(app: &App, username: &str, width: u16) -> ProfileRows {
     let render = render_ctx(app);
     let own = match app.session() {
         Session::SignedIn(me) => Some(me.handle.as_str()),
-        Session::Guest => None,
+        Session::Guest | Session::Restoring => None,
     };
     let env = Env {
         ctx: render,

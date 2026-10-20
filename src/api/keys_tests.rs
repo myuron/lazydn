@@ -254,3 +254,59 @@ fn a_missing_public_file_that_cannot_be_written_does_not_fail_loading() {
     assert!(result.is_ok(), "{result:?}");
     assert!(!keys.join("id_ed25519.pub").exists());
 }
+
+// --- load: the read-only entry point used at startup ---
+
+#[test]
+fn load_returns_none_for_a_missing_key_and_creates_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("lazydn").join("id_ed25519");
+
+    let result = KeyPair::load(&path);
+
+    assert!(matches!(result, Ok(None)), "{result:?}");
+    assert!(!dir.path().join("lazydn").exists());
+}
+
+#[test]
+fn load_reads_an_existing_key_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = golden_key_in(dir.path());
+    let before = std::fs::read(&path).unwrap();
+
+    let pair = KeyPair::load(&path).expect("loads").expect("a key exists");
+
+    assert_eq!(pair.fingerprint(), GOLDEN_FINGERPRINT);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let mut names: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["id_ed25519"]);
+}
+
+#[test]
+fn load_refuses_a_key_open_to_group_or_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = golden_key_in(dir.path());
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+
+    let result = KeyPair::load(&path);
+
+    assert!(
+        matches!(result, Err(KeyError::InsecurePermissions)),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn load_reports_a_broken_file_as_an_error_not_as_absent() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("id_ed25519");
+    write_private_key(&path, "this is not a key\n");
+
+    let result = KeyPair::load(&path);
+
+    assert!(matches!(result, Err(KeyError::Parse(_))), "{result:?}");
+}

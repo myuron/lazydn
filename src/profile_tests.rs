@@ -1,7 +1,7 @@
 use crossterm::event::KeyCode;
 use serde_json::{Value, json};
 
-use crate::action::{Action, Effect};
+use crate::action::{Action, Effect, Failure};
 use crate::app::{App, ConnTab, ProfileTab, Screen};
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::feed_tests::{FOLLOWING, deliver, list_width, started};
@@ -387,7 +387,7 @@ fn a_profile_feed_failure_for_another_request_is_dropped() {
         username: "alice".into(),
         tab: ProfileTab::Commits,
         req: ReqId(u64::MAX),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert!(profile_of(&app, "alice").commits.pending.is_some());
 }
@@ -410,7 +410,7 @@ fn a_user_failure_for_another_request_is_dropped() {
     app.update(Action::UserFailed {
         username: "alice".into(),
         req: ReqId(u64::MAX),
-        code: "user_unavailable".into(),
+        failure: Failure::new("user_unavailable"),
         blocked_user: None,
     });
     assert_eq!(profile_of(&app, "alice").error, None);
@@ -471,7 +471,7 @@ fn r_retries_a_failed_user_request() {
     app.update(Action::UserFailed {
         username: "alice".into(),
         req: user_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
         blocked_user: None,
     });
     assert_eq!(profile_of(&app, "alice").error.as_deref(), Some("http_500"));
@@ -849,7 +849,7 @@ fn fail_user(app: &mut App, effects: &[Effect], code: &str, blocked: Option<User
     app.update(Action::UserFailed {
         username: "alice".into(),
         req: user_req(effects),
-        code: code.into(),
+        failure: Failure::new(code),
         blocked_user: blocked.map(Box::new),
     });
 }
@@ -953,12 +953,12 @@ fn late_responses_after_goto_do_not_bring_the_states_back() {
         username: "alice".into(),
         tab: ProfileTab::Replies,
         req: ReqId(1),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     app.update(Action::UserFailed {
         username: "alice".into(),
         req: user_req(&profile),
-        code: "user_unavailable".into(),
+        failure: Failure::new("user_unavailable"),
         blocked_user: None,
     });
     deliver_conns(
@@ -973,7 +973,7 @@ fn late_responses_after_goto_do_not_bring_the_states_back() {
         username: "alice".into(),
         tab: ConnTab::Followers,
         req: conn_req(&conns),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert!(app.profile("alice").is_none());
     assert!(app.connections("alice", ConnTab::Followers).is_none());
@@ -1186,7 +1186,7 @@ fn r_after_a_failed_first_page_requests_it_again_and_fills_the_list() {
         username: "alice".into(),
         tab: ConnTab::Followers,
         req: conn_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     let again = key(&mut app, 'R');
     assert_eq!(
@@ -1293,7 +1293,7 @@ fn a_list_that_is_not_shown_cannot_be_acted_on() {
     app.update(Action::UserFailed {
         username: "alice".into(),
         req: user_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
         blocked_user: None,
     });
     for k in ['j', '@', 'o'] {

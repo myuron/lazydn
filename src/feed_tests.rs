@@ -3,7 +3,7 @@ use ratatui::layout::Rect;
 use serde_json::{Value, json};
 use time::{Duration, UtcOffset};
 
-use crate::action::{Action, Effect};
+use crate::action::{Action, Effect, Failure};
 use crate::app::{App, LogTab, Screen, Session};
 use crate::feed::{Feed, FeedKey, FeedPage, LoadState, ReqId, ensure_visible};
 use crate::model::Commit;
@@ -106,6 +106,8 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::FetchBlocked { .. }
         | Effect::FetchNotifications { .. }
         | Effect::FetchNotificationGroup { .. }
+        | Effect::UseGuestClient
+        | Effect::UseSignedClient
         | Effect::Quit => None,
     }
 }
@@ -329,7 +331,7 @@ fn goto_retries_a_screen_whose_first_load_failed() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     type_str(&mut app, "gs");
     let effects = type_str(&mut app, "gl");
@@ -342,7 +344,7 @@ fn back_retries_a_screen_whose_first_load_failed() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     app.update(Action::Open(Screen::Thread("c0".into())));
     let effects = press(&mut app, KeyCode::Esc);
@@ -439,7 +441,7 @@ fn failed_refresh_keeps_items_and_records_the_code() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "rate_limited".into(),
+        failure: Failure::new("rate_limited"),
     });
     let feed = app.feed(FOLLOWING);
     assert_eq!(feed.items.len(), 20);
@@ -599,7 +601,7 @@ fn failed_append_is_not_retried_by_moving_and_r_refetches_that_page() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(
         app.feed(FOLLOWING).load,
@@ -922,7 +924,7 @@ fn failure_of_a_superseded_request_is_ignored() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&old),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     assert_eq!(loading(&app, FOLLOWING), Some(false));
 }
@@ -1025,7 +1027,7 @@ fn k_at_the_top_refreshes_from_the_first_page_even_after_a_failed_append() {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: first_req(&effects),
-        code: "http_500".into(),
+        failure: Failure::new("http_500"),
     });
     type_str(&mut app, "gg");
     app.update(Action::NewCommits {
