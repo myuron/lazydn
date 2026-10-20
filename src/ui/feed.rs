@@ -81,7 +81,7 @@ fn rule(head: &str, fill: &str, width: usize) -> Line<'static> {
     plain(&format!("{head}{}", fill.repeat(fill_len)), limit)
 }
 
-fn retry_hint(code: &str, width: usize) -> Line<'static> {
+pub(crate) fn retry_hint(code: &str, width: usize) -> Line<'static> {
     plain(&format!(" error: {code} — press R to retry"), width)
 }
 
@@ -129,15 +129,15 @@ fn new_commits_banner(count: u32, width: usize) -> Line<'static> {
 }
 
 /// What the row builders share, so that suggestions and listed cards are drawn alike.
-struct Env<'a> {
-    ctx: RenderCtx,
-    own: Option<&'a str>,
-    width: usize,
+pub(crate) struct Env<'a> {
+    pub ctx: RenderCtx,
+    pub own: Option<&'a str>,
+    pub width: usize,
 }
 
 impl Env<'_> {
     /// The rail row followed by the card; the card is everything after the first row.
-    fn card_rows(
+    pub(crate) fn card_rows(
         &self,
         commit: &Commit,
         node: Node,
@@ -237,26 +237,41 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
         previous = Some(commit);
     }
 
+    out.lines.extend(list_tail(feed, w));
+    out
+}
+
+/// The row of a list that has nothing to show yet because it is loading or failed.
+pub(crate) fn pending_or_failed_row(feed: &Feed, w: usize) -> Option<Line<'static>> {
+    if feed.pending.is_some() {
+        return Some(plain(" ┊ (loading...)", w));
+    }
+    match &feed.load {
+        LoadState::Failed { code, .. } => Some(retry_hint(code, w)),
+        LoadState::Idle => None,
+    }
+}
+
+/// The closing row under the last card: more loading, a failed page, or the end of history.
+pub(crate) fn list_tail(feed: &Feed, w: usize) -> Option<Line<'static>> {
     if feed.pending.as_ref().is_some_and(|p| p.append) {
-        out.lines.push(plain(" ┊ (loading more...)", w));
+        Some(plain(" ┊ (loading more...)", w))
     } else if let LoadState::Failed { code, append: true } = &feed.load {
-        out.lines.push(retry_hint(code, w));
-    } else if feed.next_cursor.is_none() {
-        out.lines.push(plain(
+        Some(retry_hint(code, w))
+    } else if feed.loaded_once && feed.next_cursor.is_none() && feed.pending.is_none() {
+        Some(plain(
             " ○ That's the root commit. There's nothing before it.",
             w,
-        ));
+        ))
+    } else {
+        None
     }
-    out
 }
 
 fn empty_state(feed: &Feed, key: FeedKey, env: &Env) -> Vec<Line<'static>> {
     let w = env.width;
-    if feed.pending.is_some() {
-        return vec![plain(" ┊ (loading...)", w)];
-    }
-    if let LoadState::Failed { code, .. } = &feed.load {
-        return vec![retry_hint(code, w)];
+    if let Some(row) = pending_or_failed_row(feed, w) {
+        return vec![row];
     }
     if !feed.loaded_once {
         return Vec::new();

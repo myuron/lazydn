@@ -16,7 +16,7 @@ impl App {
         }
     }
 
-    pub(super) fn is_guest(&self) -> bool {
+    pub fn is_guest(&self) -> bool {
         matches!(self.session, Session::Guest)
     }
 

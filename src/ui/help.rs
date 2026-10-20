@@ -18,8 +18,8 @@ const LINES: [&str; 15] = [
     "  g s     settings        Global                          ",
     "  g v     saved            c   write a commit             ",
     "  g g / G top / bottom     R   refresh                    ",
-    "                           ?   this help                  ",
-    "                           Q   quit                       ",
+    "  @       author profile   ?   this help                  ",
+    "  3 / 4   follow lists     Q   quit                       ",
 ];
 
 pub fn render(frame: &mut Frame, area: Rect) {

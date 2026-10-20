@@ -341,7 +341,7 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 
 ### Profile
 
-Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開きます。Web 版の `/@{user}` に当たります。
+Nav の Profile（`g p`）か、カードを選んで `@` を押すと開きます（`@` は、カードの作者のプロフィールを開くキーです）。Web 版の `/@{user}` に当たります。
 
 ```text
 ┏ Alice · 187 commits ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -350,6 +350,7 @@ Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開
 ┃ ● @alice  [Follows you]                                          ┃
 ┃                                                                  ┃
 ┃ Building terminal things. Rust, Nix, coffee.                     ┃
+┃                                                                  ┃
 ┃ ⌂ @laravel   ⚲ Portugal   ⛓ alice.dev   Joined Oct 2026          ┃
 ┃                                                                  ┃
 ┃ 187 commits   87 following   3647 followers   ◓ 42 received      ┃
@@ -373,8 +374,8 @@ Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開
 | ヘッダー | 名前、lane 色の `●`、`@handle`、`[Follows you]` / `[Muted]` のバッジを表示します |
 | 操作 | 他人のプロフィールでは、`f` でフォロー、`m` でミュート、`B` でブロックします。自分のプロフィールには、`O` で GitHub を開く操作だけを出します |
 | bio と meta | company、location、website、`Joined Month Year` を表示します |
-| 統計 | commits、following、followers、受け取った pastel の数を表示します。following と followers で `Enter` を押すと、[Followers / Following](#followers--following) を開きます |
-| タブ | `Commits │ Replies`。Replies は `?replies=true` で取得します |
+| 統計 | commits、following、followers、受け取った pastel の数を表示します。`3` で Followers、`4` で Following の [Followers / Following](#followers--following) を開きます |
+| タブ | `Commits` と `Replies` を画面の左右に半分ずつ中央寄せで並べ、選んだタブの下に `━` の線を引きます。`1` / `2` で切り替えます。Replies は `?replies=true` で取得します |
 | 一覧 | 先頭に、ピン留めした commit を `⚲ Pinned` の見出し付きで表示します |
 
 - Web 版にあるアクティビティグラフ、streak、実績、レベル表示は、API がないので載せません。
@@ -390,15 +391,14 @@ Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開
 ┃            ━━━━━━━━━                                             ┃
 ┃                                                                  ┃
 ┃▌◉ Bob @bob  [Follows you]                            [Following] ┃
-┃   coffee-driven developer                                        ┃
+┃▌  coffee-driven developer                                        ┃
 ┃ ◉ Carol @carol                                        [ Follow ] ┃
 ┃   ssh enthusiast                                                 ┃
 ┃ ◉ Dave @dave  [Follows you]                           [ Follow ] ┃
-┃ ┊                                                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
-- `1` と `2` でタブを切り替えます。1 ページは 30 件です。
+- `1` と `2` でタブを切り替えます。このタブの切り替えは履歴に積まず、画面を置き換えるので、`Esc` で Profile に戻ります。1 ページは 30 件です。
 - サインインしているときは、各行に `[Follows you]` と、フォロー状態のボタン（`[Following]` / `[ Follow ]`）を表示します。`f` でフォローを切り替え、`Enter` でその人のプロフィールを開きます。
 
 使う API: `GET /v1/users/{username}/followers`、`GET /v1/users/{username}/following`
@@ -663,8 +663,8 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║  g s     settings        Global                          ║
 ║  g v     saved            c   write a commit             ║
 ║  g g / G top / bottom     R   refresh                    ║
-║                           ?   this help                  ║
-║                           Q   quit                       ║
+║  @       author profile   ?   this help                  ║
+║  3 / 4   follow lists     Q   quit                       ║
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -695,10 +695,10 @@ flowchart LR
     SignIn -->|成功| Log
 
     Log -->|Enter| Thread
-    Log -->|Enter on name| Profile
-    Thread -->|Enter on name| Profile
+    Log -->|@| Profile
+    Thread -->|@| Profile
     Thread -->|Enter on reply| Thread
-    Profile -->|Enter on stats| Connections[Followers / Following]
+    Profile -->|3 / 4| Connections[Followers / Following]
     Connections -->|Enter| Profile
     Notifications -->|Enter| Thread
     Notifications -->|Enter on follow| Profile
@@ -733,7 +733,10 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `g g` / `G` | 先頭 / 末尾 | 一覧 | 追加 |
 | `Esc` | 戻る、モーダルを閉じる | 全体 | 追加 |
 | `Tab` / `Shift+Tab` | 次 / 前のペイン | 全体 | 追加 |
-| `1`〜`3` | タブの切り替え | Log、Profile、Settings | 追加 |
+| `1`〜`3` | タブの切り替え | Log、Settings | 追加 |
+| `1` / `2` | タブの切り替え（Profile は Commits / Replies、Followers / Following は Followers / Following） | Profile、Followers / Following | 追加 |
+| `3` / `4` | Followers / Following を開く | Profile | 追加 |
+| `@` | 選択中のカードの作者のプロフィールを開く | 一覧、Thread、Profile の一覧 | 追加 |
 | `1`〜`6`、`a` | フィルターの切り替え | Notifications | 追加 |
 | `s` | star | カード | 追加 |
 | `p` | pastel を贈る | カード | 追加 |
@@ -750,6 +753,8 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `Q` / `Ctrl+C` | 終了 | 全体 | 追加 |
 
 - **終了は `q` ではなく `Q`**: TUI では `q` で終了するのが一般的ですが、Web 版では `q` が Quote に割り当てられています。Web 版との一致を優先して、終了は `Q` と `Ctrl+C` にします。いまの `src/main.rs` は `q` と `Esc` で終了するので、実装するときに変えます。
+- **`1`〜`3` と `3` / `4` の違い**: Log と Settings の `1`〜`3` は、同じ画面の中でタブを切り替えます。Profile の `1` / `2` も同じ画面の中のタブ（Commits / Replies）の切り替えですが、`3` / `4` はタブではなく、別の画面（Followers / Following）を履歴に積んで開くので、`Esc` で Profile に戻ります。Followers / Following の `1` / `2` は、履歴に積まずに画面を置き換えます。
+- **`@` は作者のプロフィールを開く**: カードの中で操作対象を選ぶ仕組みがないため、Web 版の「作者名をクリック」に当たる操作を、選択中のカードの作者に対する `@` にしています。いま見ているプロフィールと同じ人のカードでは何もしません。
 - **文字の入力中**（Composer、Code、`details`）は、`Esc` と `Ctrl+Enter` 以外のキーをすべて入力として扱います。
 - **破壊的な操作には大文字を使う**: `B`（ブロック）と `D`（アカウントの削除）は、押し間違えを避けるために大文字にしています。
 

@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::action::Action;
-use crate::app::{App, LogTab, Modal, Pane, Screen, Session};
+use crate::app::{App, ConnTab, LogTab, Modal, Pane, ProfileTab, Screen, Session};
 use crate::layout::LayoutMode;
 
 pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
@@ -29,7 +29,11 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     let list = app.focus() == Pane::Main
         && matches!(
             app.screen(),
-            Screen::Log(_) | Screen::Saved | Screen::Thread(_)
+            Screen::Log(_)
+                | Screen::Saved
+                | Screen::Thread(_)
+                | Screen::Profile(_)
+                | Screen::Connections(..)
         );
     if app.g_pending() {
         if list && key.code == KeyCode::Char('g') {
@@ -64,6 +68,29 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             _ => {}
         }
     }
+    if app.focus() == Pane::Main {
+        match (app.screen(), key.code) {
+            (Screen::Profile(_), KeyCode::Char('1')) => {
+                return Some(Action::SwitchProfileTab(ProfileTab::Commits));
+            }
+            (Screen::Profile(_), KeyCode::Char('2')) => {
+                return Some(Action::SwitchProfileTab(ProfileTab::Replies));
+            }
+            (Screen::Profile(_), KeyCode::Char('3')) => {
+                return Some(Action::OpenConnections(ConnTab::Followers));
+            }
+            (Screen::Profile(_), KeyCode::Char('4')) => {
+                return Some(Action::OpenConnections(ConnTab::Following));
+            }
+            (Screen::Connections(..), KeyCode::Char('1')) => {
+                return Some(Action::SwitchConnTab(ConnTab::Followers));
+            }
+            (Screen::Connections(..), KeyCode::Char('2')) => {
+                return Some(Action::SwitchConnTab(ConnTab::Following));
+            }
+            _ => {}
+        }
+    }
     if list {
         let action = match key.code {
             KeyCode::Char('j') | KeyCode::Down => Some(Action::MoveSelection(1)),
@@ -72,6 +99,9 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::OpenSelected),
             KeyCode::Char('o') => Some(Action::ToggleReplies),
             KeyCode::Char('R') => Some(Action::Refresh),
+            KeyCode::Char('@') if !matches!(app.screen(), Screen::Connections(..)) => {
+                Some(Action::OpenAuthor)
+            }
             _ => None,
         };
         if action.is_some() {

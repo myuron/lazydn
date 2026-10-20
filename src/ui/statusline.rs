@@ -2,7 +2,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, Screen};
+use crate::app::{App, ConnTab, Screen};
 use crate::layout::LayoutMode;
 use crate::thread::short_hash;
 use crate::ui::screens::{screen_name, tab_label};
@@ -11,6 +11,8 @@ pub fn breadcrumb(app: &App) -> String {
     match app.screen() {
         Screen::Log(tab) => format!("Log > {}", tab_label(tab)),
         Screen::Thread(id) => format!("Commit {}", short_hash(&id)),
+        Screen::Connections(_, ConnTab::Followers) => "Profile > Followers".to_string(),
+        Screen::Connections(_, ConnTab::Following) => "Profile > Following".to_string(),
         other => screen_name(&other).to_string(),
     }
 }

@@ -449,3 +449,33 @@ fn t09_parent_is_a_thread_item_when_present_and_none_otherwise() {
     let without: Commit = parse_value(commit_json(json!({ "parent": null })));
     assert_eq!(without.parent, None);
 }
+
+// 10b. GET /v1/users/{u}
+
+#[test]
+fn t10b_signed_user_response_carries_flags_counts_and_the_pinned_commit() {
+    let response: UserResponse = parse_value(json!({
+        "data": user_json(json!({})),
+        "is_following": true,
+        "follows_you": false,
+        "is_muting": true,
+        "pasteis_received": 42,
+        "pinned_commit": commit_json(json!({ "id": "pin" })),
+    }));
+    assert_eq!(response.data.username, "alice");
+    assert_eq!(response.is_following, Some(true));
+    assert_eq!(response.follows_you, Some(false));
+    assert_eq!(response.is_muting, Some(true));
+    assert_eq!(response.pasteis_received, Some(42));
+    assert_eq!(response.pinned_commit.map(|c| c.id), Some("pin".into()));
+}
+
+#[test]
+fn t10b_guest_user_response_has_data_only() {
+    let response: UserResponse = parse_value(json!({ "data": user_json(json!({})) }));
+    assert_eq!(response.is_following, None);
+    assert_eq!(response.follows_you, None);
+    assert_eq!(response.is_muting, None);
+    assert_eq!(response.pasteis_received, None);
+    assert_eq!(response.pinned_commit, None);
+}

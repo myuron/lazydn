@@ -52,7 +52,7 @@ fn me(app: &App) -> Option<&Me> {
 
 /// Returns the marker span and the style of the rest of the item.
 fn item_styles(app: &App, item: NavItem) -> (Span<'static>, Style) {
-    let is_current = NavItem::of_screen(&app.screen()) == Some(item);
+    let is_current = app.nav_item() == Some(item);
     let is_cursor = app.focus() == Pane::Nav && app.nav_cursor() == item;
     let mut style = Style::new();
     if is_current {

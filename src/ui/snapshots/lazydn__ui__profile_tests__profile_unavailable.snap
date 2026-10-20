@@ -1,0 +1,28 @@
+---
+source: src/ui/profile_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ @bob ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃                                                                  ┃│ ◉ myuron                     │"
+"│ for devs         │┃ fatal: @bob is not available                                     ┃│ ● @myuron                    │"
+"│                  │┃                                                                  ┃│                              │"
+"│ ◉ Log            │┃                                                                  ┃│ 42 commits                   │"
+"│ ◎ Notifications  │┃                                                                  ┃│ 10 following  12 followers   │"
+"│                12│┃                                                                  ┃│ ◓ 7/10 pasteis left          │"
+"│ ◯ Profile        │┃                                                                  ┃│                              │"
+"│ ⊡ Saved          │┃                                                                  ┃│ Rust / TUI enjoyer           │"
+"│ ⚙ Settings       │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃┌ Keys ────────────────────────┐"
+"│ [ c  Commit ]    │┃                                                                  ┃│ j/k  move     ↵  open        │"
+"│                  │┃                                                                  ┃│ c    commit   r  reply       │"
+"│                  │┃                                                                  ┃│ s    star     o  replies     │"
+"│                  │┃                                                                  ┃│ ?    all keys                │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│ @myuron          │┃                                                                  ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Profile  j/k move  ↵ open  c commit  Tab pane  ? help                                            API -/-  ○ connecting "

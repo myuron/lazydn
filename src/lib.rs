@@ -6,6 +6,7 @@ pub mod keymap;
 pub mod lane;
 pub mod layout;
 pub mod model;
+pub mod profile;
 pub mod thread;
 pub mod timefmt;
 pub mod ui;
@@ -14,6 +15,8 @@ pub mod ui;
 mod feed_tests;
 #[cfg(test)]
 mod logic_tests;
+#[cfg(test)]
+mod profile_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

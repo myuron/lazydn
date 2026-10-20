@@ -3,11 +3,13 @@ use std::collections::HashMap;
 use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
+mod profile;
 mod thread;
 
 use crate::action::{Action, Effect};
 use crate::feed::{Feed, FeedKey, LoadState, ReqId, ensure_visible};
 use crate::layout::LayoutMode;
+use crate::profile::{ConnectionsState, ProfileState};
 use crate::thread::ThreadState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +39,20 @@ pub enum LogTab {
     Trending,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum ProfileTab {
+    #[default]
+    Commits,
+    Replies,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum ConnTab {
+    #[default]
+    Followers,
+    Following,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
     Log(LogTab),
@@ -47,6 +63,8 @@ pub enum Screen {
     Settings,
     /// Commit id.
     Thread(String),
+    /// Username of the profile owner, as typed; state is looked up without regard to case.
+    Connections(String, ConnTab),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +96,7 @@ impl NavItem {
             Screen::Profile(_) => Some(NavItem::Profile),
             Screen::Saved => Some(NavItem::Saved),
             Screen::Settings => Some(NavItem::Settings),
-            Screen::Thread(_) => None,
+            Screen::Thread(_) | Screen::Connections(..) => None,
         }
     }
 
@@ -124,6 +142,9 @@ pub struct App {
     size: (u16, u16),
     feeds: HashMap<FeedKey, Feed>,
     threads: HashMap<String, ThreadState>,
+    /// Keyed by the lowercased username.
+    profiles: HashMap<String, ProfileState>,
+    connections: HashMap<(String, ConnTab), ConnectionsState>,
     now: OffsetDateTime,
     local_offset: UtcOffset,
     prefs: Prefs,
@@ -152,6 +173,8 @@ impl App {
                 .map(|k| (k, Feed::default()))
                 .collect(),
             threads: HashMap::new(),
+            profiles: HashMap::new(),
+            connections: HashMap::new(),
             now,
             local_offset,
             prefs: Prefs::default(),
@@ -176,6 +199,7 @@ impl App {
                 if let Some(previous) = self.history.pop() {
                     self.show(previous);
                     self.drop_unreachable_threads();
+                    self.drop_unreachable_profiles();
                     effects.extend(self.entry_fetch());
                 }
             }
@@ -261,6 +285,13 @@ impl App {
             Action::ToggleReplies if self.thread_id().is_some() => {
                 effects.extend(self.thread_toggle());
             }
+            Action::OpenSelected if self.profile_name().is_some() => {
+                effects.extend(self.profile_open_selected());
+            }
+            Action::OpenSelected if self.conn_screen().is_some() => {
+                effects.extend(self.conn_open_selected());
+            }
+            Action::ToggleReplies if self.profile_name().is_some() => self.profile_toggle(),
             Action::OpenSelected => {
                 let id = self
                     .current_feed()
@@ -270,6 +301,45 @@ impl App {
                     effects.extend(self.open(Screen::Thread(id)));
                 }
             }
+            Action::UserLoaded {
+                username,
+                req,
+                response,
+            } => self.apply_user_loaded(&username, req, *response),
+            Action::UserFailed {
+                username,
+                req,
+                code,
+                blocked_user,
+            } => self.apply_user_failed(&username, req, code, blocked_user.map(|u| *u)),
+            Action::ProfileFeedLoaded {
+                username,
+                tab,
+                req,
+                page,
+            } => self.apply_feed_loaded(&username, tab, req, page),
+            Action::ProfileFeedFailed {
+                username,
+                tab,
+                req,
+                code,
+            } => self.apply_feed_failed(&username, tab, req, &code),
+            Action::ConnectionsLoaded {
+                username,
+                tab,
+                req,
+                page,
+            } => self.apply_conn_loaded(&username, tab, req, page),
+            Action::ConnectionsFailed {
+                username,
+                tab,
+                req,
+                code,
+            } => self.apply_conn_failed(&username, tab, req, code),
+            Action::OpenAuthor => effects.extend(self.open_author()),
+            Action::OpenConnections(tab) => effects.extend(self.open_connections(tab)),
+            Action::SwitchProfileTab(tab) => effects.extend(self.profile_switch_tab(tab)),
+            Action::SwitchConnTab(tab) => effects.extend(self.conn_switch_tab(tab)),
             Action::ToggleReplies => {
                 if let Some(key) = self.current_key() {
                     self.feeds.entry(key).or_default().toggle_replies();
@@ -337,15 +407,17 @@ impl App {
     }
 
     fn needs_sign_in(&self, screen: &Screen) -> bool {
-        matches!(self.session, Session::Guest)
-            && matches!(
-                screen,
-                Screen::Log(LogTab::Following)
-                    | Screen::Notifications
-                    | Screen::Profile(_)
-                    | Screen::Saved
-                    | Screen::Settings
-            )
+        if !matches!(self.session, Session::Guest) {
+            return false;
+        }
+        // Relies on own_handle() being empty for a guest, which is what makes g p and the Nav target Profile(""); other profiles are public.
+        matches!(
+            screen,
+            Screen::Log(LogTab::Following)
+                | Screen::Notifications
+                | Screen::Saved
+                | Screen::Settings
+        ) || matches!(screen, Screen::Profile(u) if u.is_empty())
     }
 
     /// Returns false after opening the sign-in dialog when a guest targets a protected screen.
@@ -365,6 +437,8 @@ impl App {
         self.history.clear();
         // No history entry can lead back to a thread now, so its state would only go stale.
         self.threads.clear();
+        self.profiles.clear();
+        self.connections.clear();
         self.show(screen);
         if let Some(feed) = self.current_key().map(|k| self.feeds.entry(k).or_default()) {
             feed.selected = 0;
@@ -386,7 +460,7 @@ impl App {
     }
 
     fn sync_cursor(&mut self) {
-        if let Some(item) = NavItem::of_screen(&self.screen) {
+        if let Some(item) = self.nav_item() {
             self.nav_cursor = item;
         }
     }
@@ -405,6 +479,14 @@ impl App {
 
     pub fn thread(&self, id: &str) -> Option<&ThreadState> {
         self.threads.get(id)
+    }
+
+    pub fn profile(&self, username: &str) -> Option<&ProfileState> {
+        self.profiles.get(&username.to_ascii_lowercase())
+    }
+
+    pub fn connections(&self, username: &str, tab: ConnTab) -> Option<&ConnectionsState> {
+        self.connections.get(&(username.to_ascii_lowercase(), tab))
     }
 
     pub fn now(&self) -> OffsetDateTime {
@@ -498,6 +580,15 @@ impl App {
     }
 
     fn entry_fetch(&mut self) -> Vec<Effect> {
+        if let Some(name) = self.profile_name() {
+            if self.profile(&name).is_some() {
+                return Vec::new();
+            }
+            return self.profile_requests(&name);
+        }
+        if let Some((name, tab)) = self.conn_screen() {
+            return self.conn_entry(&name, tab);
+        }
         if let Some(id) = self.thread_id() {
             if self.threads.contains_key(&id) {
                 return Vec::new();
@@ -513,6 +604,12 @@ impl App {
     }
 
     fn refresh(&mut self) -> Vec<Effect> {
+        if let Some(name) = self.profile_name() {
+            return self.profile_refresh(&name);
+        }
+        if let Some((name, tab)) = self.conn_screen() {
+            return self.conn_refresh(&name, tab);
+        }
         if let Some(id) = self.thread_id() {
             if let Some(state) = self.threads.get_mut(&id) {
                 state.children.clear();
@@ -538,6 +635,12 @@ impl App {
     }
 
     fn select(&mut self, index: usize) -> Vec<Effect> {
+        if let Some(name) = self.profile_name() {
+            return self.profile_select(&name, index);
+        }
+        if let Some((name, tab)) = self.conn_screen() {
+            return self.conn_select(&name, tab, index);
+        }
         if let Some(id) = self.thread_id() {
             return self.thread_select(&id, index);
         }
@@ -549,6 +652,14 @@ impl App {
     }
 
     fn move_selection(&mut self, step: i32) -> Vec<Effect> {
+        if let Some(name) = self.profile_name() {
+            let current = self.profile(&name).map_or(0, |s| s.selected());
+            return self.profile_select(&name, current.saturating_add_signed(step as isize));
+        }
+        if let Some((name, tab)) = self.conn_screen() {
+            let current = self.connections(&name, tab).map_or(0, |s| s.selected);
+            return self.conn_select(&name, tab, current.saturating_add_signed(step as isize));
+        }
         if let Some(id) = self.thread_id() {
             let current = self.threads.get(&id).map_or(0, |t| t.selected);
             return self.thread_select(&id, current.saturating_add_signed(step as isize));
@@ -582,6 +693,14 @@ impl App {
 
     /// Leaves the scroll alone when the size is unknown, since no row can be placed then.
     fn reconcile_scroll(&mut self) {
+        if let Some(name) = self.profile_name() {
+            self.reconcile_profile_scroll(&name);
+            return;
+        }
+        if let Some((name, tab)) = self.conn_screen() {
+            self.reconcile_conn_scroll(&name, tab);
+            return;
+        }
         if let Some(id) = self.thread_id() {
             self.reconcile_thread_scroll(&id);
             return;

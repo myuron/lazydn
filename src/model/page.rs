@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use super::commit::{Commit, ThreadItem};
-use super::user::CurrentUser;
+use super::user::{CurrentUser, User};
 
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct Meta {
@@ -39,4 +39,15 @@ pub struct ThreadResponse {
 pub struct MeResponse {
     pub data: CurrentUser,
     pub unread_notifications_count: u32,
+}
+
+/// The extra fields come only with a signed request, so a guest gets `data` alone.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct UserResponse {
+    pub data: User,
+    pub is_following: Option<bool>,
+    pub follows_you: Option<bool>,
+    pub is_muting: Option<bool>,
+    pub pasteis_received: Option<u32>,
+    pub pinned_commit: Option<Commit>,
 }

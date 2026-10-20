@@ -98,6 +98,9 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         Effect::PollLog { .. }
         | Effect::FetchThread { .. }
         | Effect::FetchReplies { .. }
+        | Effect::FetchUser { .. }
+        | Effect::FetchUserCommits { .. }
+        | Effect::FetchConnections { .. }
         | Effect::Quit => None,
     }
 }
