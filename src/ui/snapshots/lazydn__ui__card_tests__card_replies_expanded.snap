@@ -1,0 +1,18 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m                                           a1b2c3d"
+" │ Parent body.                                                       "
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 5 replies                        ⊡ ⚑"
+" │ ├─● Bob @bob · 1m                                                  "
+" │ │     First reply                                                  "
+" │ ├─ ◌ [deleted] This commit was deleted.                            "
+" │ └─● Carol @carol · 2m                                              "
+" │       Third reply                                                  "
+" │ Show 2 more                                                        "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "

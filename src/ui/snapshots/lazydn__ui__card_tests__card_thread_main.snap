@@ -1,0 +1,14 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice  [1/2]                                                "
+" │ Full body shown in the thread view.                                "
+" │ ┌ rust ────────┐                                                   "
+" │ │ fn main() {} │                                                   "
+" │ └──────────────┘                                                   "
+" │ Tail text after the block.                                         "
+" │ Oct 18, 2026 14:02 · commit a1b2c3d                                "
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"
+"                                                                      "
+"                                                                      "

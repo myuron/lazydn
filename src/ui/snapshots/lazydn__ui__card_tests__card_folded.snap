@@ -1,0 +1,16 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m                                           a1b2c3d"
+" │ This is a long commit message about folding. It keeps going well   "
+" │ past the first line so that the preview wraps onto a second line…  "
+" │ Show more                                                          "
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "

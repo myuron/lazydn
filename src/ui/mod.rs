@@ -1,4 +1,5 @@
 pub mod aside;
+pub mod card;
 pub mod help;
 pub mod layout;
 pub mod nav;
@@ -47,5 +48,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
     }
 }
 
+#[cfg(test)]
+mod card_tests;
 #[cfg(test)]
 mod tests;

@@ -1,0 +1,9 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" • Alice  [2/2]                                                a1b2c3d"
+" │ Same author follow-up.                                             "
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"
+"                                                                      "
+"                                                                      "

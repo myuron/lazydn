@@ -1,0 +1,12 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m                                           a1b2c3d"
+" │ Which one?                                                         "
+" │ ▇▇▇▇▇▇░░░░  62% Rust                                               "
+" │ ▇▇▇▇░░░░░░  38% Go                                                 "
+" │ Final results                                                      "
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"
+"                                                                      "
+"                                                                      "
