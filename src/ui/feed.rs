@@ -231,7 +231,9 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
                 out.lines.push(rule(&format!(" ╎ ── {label} "), "─", w));
                 boundary = true;
             }
-            if i > 0 && app.last_visit() == Some(commit.id.as_str()) {
+            if i > 0
+                && matches!(key, FeedKey::Log(tab) if app.last_visit_of(tab) == Some(commit.id.as_str()))
+            {
                 out.lines.push(rule(" ╌╌ HEAD@{last visit} ", "╌", w));
                 boundary = true;
             }

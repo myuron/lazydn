@@ -1,0 +1,67 @@
+# lazydn
+
+A terminal UI client for [dev-null.sh](https://dev-null.sh), built with Rust and Ratatui.
+
+lazydn is work in progress. Writing commits is not available yet.
+
+## Start
+
+Build and run with a stable Rust toolchain:
+
+```sh
+cargo run --release
+```
+
+Without a signed-in device, lazydn starts as a guest on the Latest log. Press `?` for the key list.
+
+### Sign in
+
+1. Press `L` to open the sign-in dialog. The first time, press `Enter` to create the device key.
+2. Press `Ctrl+O` to open the approval page in your browser, or `Ctrl+Y` to copy its URL. The copy is sent to the terminal with OSC 52; inside tmux, `set -g set-clipboard on` is needed, and the outer terminal must support OSC 52 too; otherwise the copy is silently lost.
+3. Approve the device on the page. The browser then tries to open a `devnull://lazydn/callback?code=...` URL that no program handles.
+4. Copy that whole `devnull://...` URL (or only its `code`) and paste it into the Code field, then press `Enter`.
+
+The browser is opened only when you press `Ctrl+O`.
+
+### Files
+
+| File | Place |
+| --- | --- |
+| `id_ed25519` (device key, mode 600) | config directory |
+| `config.toml` (appearance) | config directory |
+| `state.toml` (last visit per log tab) | state directory |
+
+The config directory is `$LAZYDN_CONFIG_DIR`, else `$XDG_CONFIG_HOME/lazydn`, else `~/.config/lazydn`.
+The state directory is `$LAZYDN_STATE_DIR`, else `$XDG_STATE_HOME/lazydn`, else `~/.local/state/lazydn`.
+A relative `XDG_*` value is ignored. A relative `LAZYDN_CONFIG_DIR` or `LAZYDN_STATE_DIR` stops lazydn at startup. An empty variable counts as unset.
+
+lazydn only reads `config.toml`; create it yourself. Keys: `theme` (`"dark"` or `"light"`), `collapse_nav`, `lane_dimming`, `ascii` (booleans) and `reply_preview_limit` (1, 3, 5, 10, 15, 20 or 25). A field that is missing falls back to its default; one with the wrong type or a value that is not allowed also falls back, and is reported in a toast.
+
+The last visit is saved when you quit with `Q` or `Ctrl+C`; SIGTERM and SIGHUP (closing the terminal) do not save it.
+
+### Environment
+
+| Variable | Meaning |
+| --- | --- |
+| `LAZYDN_CONFIG_DIR` | Config directory, holding the device key. |
+| `LAZYDN_STATE_DIR` | State directory. |
+| `LAZYDN_BASE_URL` | API host instead of `https://dev-null.sh`. Only `https`, or `http` to localhost, 127.0.0.1 (any 127.0.0.0/8 address) or ::1, is accepted; anything else, including a URL with a user name, a path, a query, a fragment or surrounding spaces, stops lazydn at startup. An empty value counts as unset. The status line shows the host when it is not the default. |
+| `COLORTERM` | `truecolor` or `24bit` turns on 24-bit colors. |
+
+### Keys
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` | Next / previous item |
+| `Enter`, `Esc` | Open, back |
+| `1`-`3` | Switch tab |
+| `g` then `l` `e` `n` `p` `s` `v` | Log, Trending, Notifications, Profile, Settings, Saved |
+| `R` | Refresh |
+| `?` | Help |
+| `Q` | Quit |
+
+## Development
+
+`just check` runs formatting, clippy and the tests. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The automated tests never connect to dev-null.sh: they use local mock servers and temporary directories, and start no browser.

@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
 use crate::action::{Action, Failure};
-use crate::app::App;
+use crate::app::{App, LogTab};
 use crate::feed::{FeedKey, FeedPage};
 use crate::feed_tests::{
     FOLLOWING, LATEST, TRENDING, deliver, down, first_req, list_width, started,
@@ -352,7 +352,7 @@ fn ranked_feed_has_no_separator_head_marker_or_banner() {
             ago(2, "carol", 7),
         ]),
     );
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Trending, "c1");
     new_commits(&mut app, TRENDING, 3);
     let t = lines_of(&app, TRENDING);
     assert_eq!(top(&t, 4), composer());
@@ -375,7 +375,7 @@ fn every_card_is_preceded_by_a_rail_row() {
         at(2, "carol", NOW - Duration::hours(30)),
     ];
     let mut app = following(120, 40, page_of(items, None));
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Following, "c1");
     let v = view(&app, FOLLOWING);
     let t = texts(&v);
     for card in &v.cards {
@@ -419,7 +419,7 @@ fn same_author_right_after_the_head_marker_keeps_the_normal_node() {
         40,
         page_of(vec![ago(0, "alice", 3), ago(1, "alice", 4)], None),
     );
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Following, "c1");
     let v = view(&app, FOLLOWING);
     let t = texts(&v);
     assert_eq!(above(&t, v.cards[1].start, 2), head_marker());
@@ -459,7 +459,7 @@ fn head_marker_precedes_the_last_visit_commit() {
             None,
         ),
     );
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Following, "c1");
     let v = view(&app, FOLLOWING);
     let t = texts(&v);
     assert_eq!(above(&t, v.cards[1].start, 2), head_marker());
@@ -474,7 +474,7 @@ fn head_marker_is_not_drawn_before_the_first_card() {
         40,
         page_of(vec![ago(0, "alice", 3), ago(1, "bob", 5)], None),
     );
-    app.set_last_visit(Some("c0".into()));
+    visit(&mut app, LogTab::Following, "c0");
     let t = lines_of(&app, FOLLOWING);
     assert!(t.iter().all(|l| !l.contains("HEAD@")), "{t:?}");
     assert_eq!(row(&t, 4), separator("Today"));
@@ -487,7 +487,7 @@ fn head_marker_is_not_drawn_without_a_matching_commit() {
         40,
         page_of(vec![ago(0, "alice", 3), ago(1, "bob", 5)], None),
     );
-    app.set_last_visit(Some("gone".into()));
+    visit(&mut app, LogTab::Following, "gone");
     let t = lines_of(&app, FOLLOWING);
     assert!(t.iter().all(|l| !l.contains("HEAD@")), "{t:?}");
     assert_eq!(row(&t, 4), separator("Today"));
@@ -505,7 +505,7 @@ fn saved_list_has_no_composer_separator_head_marker_or_banner() {
             None,
         ),
     );
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Following, "c1");
     new_commits(&mut app, SAVED, 3);
     let v = view(&app, SAVED);
     let t = texts(&v);
@@ -782,7 +782,7 @@ macro_rules! snapshot {
 fn feed_fixture(w: u16, h: u16) -> App {
     let items = vec![ago(0, "alice", 3), ago(1, "alice", 5), ago(2, "bob", 25)];
     let mut app = following(w, h, page_of(items, Some("next")));
-    app.set_last_visit(Some("c2".into()));
+    visit(&mut app, LogTab::Following, "c2");
     new_commits(&mut app, FOLLOWING, 3);
     type_str(&mut app, "gg");
     app
@@ -817,7 +817,7 @@ fn l4_trending_without_separators_banner_or_head_marker() {
             ])
         },
     );
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Trending, "c1");
     new_commits(&mut app, TRENDING, 3);
     snapshot!("log_trending", app);
 }
@@ -921,7 +921,7 @@ fn separator_and_head_marker_stack_before_the_same_card() {
         at(1, "bob", NOW - Duration::hours(25)),
     ];
     let mut app = following(120, 40, page_of(items, None));
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Following, "c1");
     let v = view(&app, FOLLOWING);
     let t = texts(&v);
     let start = v.cards[1].start;
@@ -937,7 +937,7 @@ fn separator_and_head_lines_never_exceed_an_extremely_narrow_width() {
         40,
         page_of(vec![ago(0, "alice", 3), ago(1, "bob", 4)], None),
     );
-    app.set_last_visit(Some("c1".into()));
+    visit(&mut app, LogTab::Following, "c1");
     let narrow = rows(app.feed(FOLLOWING), FOLLOWING, &app, 10);
     let t = texts(&narrow);
     let marks: Vec<&String> = t
@@ -1099,4 +1099,8 @@ fn failed_refresh_over_the_last_page_keeps_the_root_line_and_shows_no_error_line
     assert!(t.iter().all(|l| !l.contains("error:")), "{t:?}");
     assert_eq!(t.last().map(String::as_str), Some(ROOT));
     assert_eq!(app.toast().map(|t| t.text.as_str()), Some("http_500"));
+}
+
+fn visit(app: &mut App, tab: LogTab, id: &str) {
+    app.update(Action::SetLastVisit { tab, id: id.into() });
 }

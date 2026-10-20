@@ -37,7 +37,7 @@ fn error_notice(text: String) -> Vec<Action> {
     }]
 }
 
-fn is_loopback(url: &Url) -> bool {
+pub fn is_loopback(url: &Url) -> bool {
     match url.host() {
         Some(Host::Domain(name)) => name == "localhost",
         Some(Host::Ipv4(ip)) => ip.is_loopback(),

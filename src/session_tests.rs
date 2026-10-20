@@ -90,8 +90,9 @@ fn restoring_starts_on_following_without_a_dialog_and_asks_only_for_me() {
     assert_eq!(app.session(), &Session::Restoring);
     assert_eq!(app.screen(), Screen::Log(LogTab::Following));
     assert_eq!(app.modal(), None);
-    assert_eq!(effects.len(), 1, "{effects:?}");
-    assert_eq!(fetch_me_count(&effects), 1);
+    assert_eq!(effects.len(), 2, "{effects:?}");
+    assert_eq!(effects[0], Effect::UseSignedClient);
+    assert!(matches!(effects[1], Effect::FetchMe { .. }), "{effects:?}");
 }
 
 // --- Restoring: MeLoaded ---------------------------------------------------------

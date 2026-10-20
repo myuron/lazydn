@@ -4,6 +4,7 @@ use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
 mod key_status;
+mod last_visit;
 mod notifications;
 mod profile;
 mod session;
@@ -214,7 +215,7 @@ pub struct App {
     now: OffsetDateTime,
     local_offset: UtcOffset,
     prefs: Prefs,
-    last_visit: Option<String>,
+    last_visits: HashMap<LogTab, String>,
     next_req: u64,
     toast: Option<Toast>,
     conn: ConnState,
@@ -283,7 +284,7 @@ impl App {
             now,
             local_offset,
             prefs: Prefs::default(),
-            last_visit: None,
+            last_visits: HashMap::new(),
             next_req: 0,
             toast: None,
             conn: ConnState::default(),
@@ -312,6 +313,9 @@ impl App {
             Action::Quit => return vec![Effect::Quit],
             Action::Resize(w, h) => self.size = (w, h),
             Action::Init => {
+                if matches!(self.session, Session::Restoring) {
+                    effects.push(Effect::UseSignedClient);
+                }
                 if self.modal == Some(Modal::SignIn) {
                     effects.extend(self.open_sign_in());
                 }
@@ -536,6 +540,7 @@ impl App {
             Action::SwitchProfileTab(tab) => effects.extend(self.profile_switch_tab(tab)),
             Action::SwitchConnTab(tab) => effects.extend(self.conn_switch_tab(tab)),
             Action::ApiStatus { rate, online } => self.apply_api_status(rate, online),
+            Action::SetLastVisit { tab, id } => self.set_last_visit(tab, id),
             sign_in_action @ (Action::Paste(_)
             | Action::SignInInput(_)
             | Action::SignInBackspace
@@ -743,14 +748,6 @@ impl App {
 
     pub fn prefs(&self) -> &Prefs {
         &self.prefs
-    }
-
-    pub fn last_visit(&self) -> Option<&str> {
-        self.last_visit.as_deref()
-    }
-
-    pub fn set_last_visit(&mut self, id: Option<String>) {
-        self.last_visit = id;
     }
 
     pub fn own_handle(&self) -> String {

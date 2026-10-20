@@ -223,6 +223,11 @@ pub enum Action {
         rate: Option<RateLimit>,
         online: bool,
     },
+    /// The newest commit id the last session saw on a tab; main sends it once at startup.
+    SetLastVisit {
+        tab: LogTab,
+        id: String,
+    },
     /// A bracketed paste. Only the sign-in dialog takes it; elsewhere it is dropped.
     Paste(String),
     /// A character typed into the Code field of the sign-in dialog.

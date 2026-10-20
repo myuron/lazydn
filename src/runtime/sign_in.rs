@@ -80,6 +80,13 @@ impl SignInHost {
         }]
     }
 
+    /// Hands over a key that was read before the runtime started, so that a restored session can sign.
+    pub fn set_key(&self, key: Arc<KeyPair>) {
+        if let Ok(mut slot) = self.key.lock() {
+            *slot = Some(key);
+        }
+    }
+
     /// The key that `prepare` read or made.
     pub fn key(&self) -> Option<Arc<KeyPair>> {
         self.key.lock().ok().and_then(|k| k.clone())

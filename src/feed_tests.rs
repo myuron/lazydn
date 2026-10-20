@@ -68,7 +68,7 @@ fn commit_with_replies(i: usize) -> Commit {
     serde_json::from_value(value).unwrap()
 }
 
-fn page(from: usize, to: usize, cursor: Option<&str>) -> FeedPage {
+pub(crate) fn page(from: usize, to: usize, cursor: Option<&str>) -> FeedPage {
     FeedPage {
         items: (from..to).map(commit).collect(),
         next_cursor: cursor.map(String::from),

@@ -1,6 +1,7 @@
 pub mod action;
 pub mod api;
 pub mod app;
+pub mod config;
 pub mod feed;
 pub mod highlight;
 pub mod keymap;
@@ -18,7 +19,11 @@ pub mod timefmt;
 pub mod ui;
 
 #[cfg(test)]
+mod config_tests;
+#[cfg(test)]
 mod feed_tests;
+#[cfg(test)]
+mod last_visit_tests;
 #[cfg(test)]
 mod logic_tests;
 #[cfg(test)]
