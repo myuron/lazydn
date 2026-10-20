@@ -514,7 +514,7 @@ fn t15_guest_starts_with_dialog_over_latest_and_esc_closes_it() {
 
 #[test]
 fn t15_guest_g_moves_needing_sign_in_open_dialog_and_keep_screen() {
-    for second in ['n', 'p', 'v', 's'] {
+    for second in ['n', 'p', 'v'] {
         let mut app = guest_without_dialog(120, 40);
         type_str(&mut app, &format!("g{second}"));
         assert_eq!(app.modal(), Some(Modal::SignIn), "g {second}");
@@ -524,7 +524,7 @@ fn t15_guest_g_moves_needing_sign_in_open_dialog_and_keep_screen() {
 
 #[test]
 fn t15_guest_nav_enter_on_protected_items_opens_dialog_and_keeps_focus_on_nav() {
-    for presses in 1..=4 {
+    for presses in 1..=3 {
         let mut app = guest_without_dialog(120, 40);
         press(&mut app, KeyCode::Tab);
         type_str(&mut app, &"j".repeat(presses));

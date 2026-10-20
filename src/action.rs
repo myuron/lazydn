@@ -6,7 +6,7 @@ use crate::api::pkce::Pkce;
 use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
 use crate::drafts::Drafts;
 use crate::feed::{FeedKey, FeedPage, ReqId};
-use crate::model::{BlockResponse, MuteResponse};
+use crate::model::{BlockResponse, LaneSetting, MuteResponse};
 use crate::model::{
     Commit, GroupPage, MeResponse, NotificationsPage, Page, PastelResponse, ReportReason,
     ThreadItem, ThreadResponse, User, UserResponse,
@@ -62,6 +62,14 @@ impl Failure {
             message: None,
         }
     }
+}
+
+/// The write to your own settings that an answer belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MeWrite {
+    Sync,
+    Lane,
+    PasteisMode,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -418,6 +426,37 @@ pub enum Action {
         req: ReqId,
         failure: Failure,
     },
+    /// `Left` / `Right` / `h` / `l` on Settings: moves the value of the focused row by a step.
+    SettingsStep(i8),
+    /// `Space` on Settings: flips the value of the focused row.
+    SettingsToggle,
+    /// `S` on the Profile tab: syncs the profile from GitHub.
+    SyncGithub,
+    /// `D` on the Profile tab: asks for the username before the account is deleted.
+    OpenAccountDelete,
+    /// `u` on the Safety tab: unmutes or unblocks the selected person.
+    ReleaseSelected,
+    /// A key typed into the hex field or into the username field of the deletion.
+    SettingsText(crate::keymap::SettingsText),
+    /// The server took the write and answered with the account as it is now.
+    MeWriteDone {
+        kind: MeWrite,
+        req: ReqId,
+        response: Box<MeResponse>,
+    },
+    MeWriteFailed {
+        kind: MeWrite,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server deleted the account; it answers with no body.
+    AccountDeleted {
+        req: ReqId,
+    },
+    AccountDeleteFailed {
+        req: ReqId,
+        failure: Failure,
+    },
     /// The write of the drafts failed, so they are still unsaved.
     DraftsSaveFailed,
     /// The drafts of `account` read from disk; they fill only the slots that hold no text yet.
@@ -566,6 +605,22 @@ pub enum Effect {
     BlockUser {
         username: String,
         on: bool,
+        req: ReqId,
+    },
+    /// Re-syncs the profile from GitHub.
+    SyncGithub {
+        req: ReqId,
+    },
+    SetLane {
+        lane: LaneSetting,
+        req: ReqId,
+    },
+    SetPasteisMode {
+        enabled: bool,
+        req: ReqId,
+    },
+    /// Deletes the account and every device; it cannot be undone.
+    DeleteAccount {
         req: ReqId,
     },
     /// Writes the drafts of `account` to disk. The runtime does it on the spot, not on a task.

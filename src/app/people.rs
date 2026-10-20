@@ -41,7 +41,11 @@ impl App {
     }
 
     /// A block that is out holds back the follow and the mute of the same person.
-    fn begin_user_write(&mut self, kind: UserWriteKind, username: &str) -> Option<ReqId> {
+    pub(super) fn begin_user_write(
+        &mut self,
+        kind: UserWriteKind,
+        username: &str,
+    ) -> Option<ReqId> {
         let busy = self.user_write_out(kind, username)
             || (kind != UserWriteKind::Block
                 && self.user_write_out(UserWriteKind::Block, username));
@@ -311,15 +315,17 @@ impl App {
         if !self.end_user_write(UserWriteKind::Mute, username, req) {
             return;
         }
+        self.drop_release(UserWriteKind::Mute, username);
         let lc = username.to_ascii_lowercase();
         if let Some(resp) = self.profiles.get_mut(&lc).and_then(|s| s.user.as_mut()) {
             resp.is_muting = Some(is_muting);
         }
-        self.settings.muted.loaded_once = false;
+        self.settings.muted.stale = true;
     }
 
     pub(super) fn mute_failed(&mut self, username: &str, on: bool, req: ReqId, failure: &Failure) {
         if self.end_user_write(UserWriteKind::Mute, username, req) {
+            self.restore_release(UserWriteKind::Mute, username);
             self.show_mute(username, on, true);
             self.show_toast(ToastKind::Error, write_failure_text(failure));
         }
@@ -336,7 +342,8 @@ impl App {
         if !self.end_user_write(UserWriteKind::Block, username, req) || is_blocking != on {
             return Vec::new();
         }
-        self.settings.blocked.loaded_once = false;
+        self.drop_release(UserWriteKind::Block, username);
+        self.settings.blocked.stale = true;
         if on {
             self.apply_block(username, data);
             return Vec::new();
@@ -349,6 +356,7 @@ impl App {
 
     pub(super) fn block_failed(&mut self, username: &str, req: ReqId, failure: &Failure) {
         if self.end_user_write(UserWriteKind::Block, username, req) {
+            self.restore_release(UserWriteKind::Block, username);
             self.show_toast(ToastKind::Error, write_failure_text(failure));
         }
     }
@@ -383,7 +391,7 @@ impl App {
             .user_writes
             .contains_key(&(UserWriteKind::Mute, lc.clone()))
         {
-            self.settings.muted.loaded_once = false;
+            self.settings.muted.stale = true;
         }
         self.user_writes
             .retain(|(kind, name), _| *name != lc || matches!(kind, UserWriteKind::Block));

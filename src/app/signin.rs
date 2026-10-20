@@ -287,6 +287,8 @@ impl App {
         self.sign_in_boundary = Some(crate::feed::ReqId(self.next_req));
         self.session = Session::SignedIn(Me::from(response));
         self.reset_account_data();
+        // An answer to a deletion of the old account must not touch the new one.
+        self.pending_account_deletion = None;
         // The response is as fresh as a FetchMe would be.
         self.last_me_fetch = Some(self.now);
         self.sign_in = Default::default();

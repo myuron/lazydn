@@ -21,7 +21,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::widgets::Paragraph;
 
-use crate::app::{App, Modal};
+use crate::app::{App, Modal, Session};
 use crate::layout::LayoutMode;
 
 /// Centers a modal and shrinks it to fit, so small terminals never index out of bounds.
@@ -69,6 +69,11 @@ pub fn draw(app: &App, frame: &mut Frame) {
                 dialogs::render_menu(menu, app.prefs().truecolor, frame);
             }
         }
+        Some(Modal::ConfirmAccountDelete) => {
+            if let (Some(dialog), Session::SignedIn(me)) = (app.account_delete(), app.session()) {
+                dialogs::render_account_delete(dialog, &me.handle, frame);
+            }
+        }
         Some(Modal::ConfirmBlock) => {
             if let Some(username) = app.block_confirm() {
                 dialogs::render_block_confirm(username, frame);
@@ -99,6 +104,8 @@ mod removal_tests;
 mod reply_tests;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod settings_write_tests;
 #[cfg(test)]
 mod signin_tests;
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use crate::action::{Action, Effect, Failure};
+use crate::action::{Action, Effect, Failure, MeWrite};
 use crate::api::client::{ApiClient, RateLimit};
 use crate::api::error::{ApiError, ErrorKind};
 use crate::app::{LogTab, ProfileTab};
@@ -78,6 +78,36 @@ async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
         | Effect::CopyLink(_) => return None,
+        Effect::SyncGithub { req } => client.sync_github().await.map(|r| {
+            let action = Action::MeWriteDone {
+                kind: MeWrite::Sync,
+                req: *req,
+                response: Box::new(r.data),
+            };
+            (action, r.rate)
+        }),
+        Effect::SetLane { lane, req } => client.update_lane(*lane).await.map(|r| {
+            let action = Action::MeWriteDone {
+                kind: MeWrite::Lane,
+                req: *req,
+                response: Box::new(r.data),
+            };
+            (action, r.rate)
+        }),
+        Effect::SetPasteisMode { enabled, req } => {
+            client.update_pasteis_mode(*enabled).await.map(|r| {
+                let action = Action::MeWriteDone {
+                    kind: MeWrite::PasteisMode,
+                    req: *req,
+                    response: Box::new(r.data),
+                };
+                (action, r.rate)
+            })
+        }
+        Effect::DeleteAccount { req } => client
+            .delete_account()
+            .await
+            .map(|r| (Action::AccountDeleted { req: *req }, r.rate)),
         Effect::FollowUser { username, on, req } => {
             let answer = if *on {
                 client.follow(username).await
@@ -439,6 +469,22 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
         | Effect::CopyLink(_) => return None,
+        Effect::SyncGithub { req } => Action::MeWriteFailed {
+            kind: MeWrite::Sync,
+            req: *req,
+            failure,
+        },
+        Effect::SetLane { req, .. } => Action::MeWriteFailed {
+            kind: MeWrite::Lane,
+            req: *req,
+            failure,
+        },
+        Effect::SetPasteisMode { req, .. } => Action::MeWriteFailed {
+            kind: MeWrite::PasteisMode,
+            req: *req,
+            failure,
+        },
+        Effect::DeleteAccount { req } => Action::AccountDeleteFailed { req: *req, failure },
         Effect::FollowUser { username, on, req } => Action::FollowFailed {
             username: username.clone(),
             on: *on,

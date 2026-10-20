@@ -474,7 +474,7 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ┃       Profile              Appearance              Safety        ┃
 ┃       ━━━━━━━                                                    ┃
 ┃                                                                  ┃
-┃ Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃
+┃▌Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃
 ┃                                                                  ┃
 ┃ Lane color                                                       ┃
 ┃  ( ) Auto (green)  (•) ● orange  ( ) ● green  ( ) ● violet       ┃
@@ -495,9 +495,41 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 | Appearance | テーマ（ダーク・ライト）、Nav の折りたたみ、lane dimming、返信プレビューの件数（1・3・5・10・15・20・25）、ASCII モード | ローカルの設定ファイル（`~/.config/lazydn/config.toml`） |
 | Safety | ミュート中・ブロック中のユーザーの一覧と、その解除 | サーバー（`GET /v1/me/muted`、`GET /v1/me/blocked`、`DELETE /v1/users/{username}/mute|block`） |
 
+**Profile タブの操作**（フォーカスは Main にあるとき）
+
+- `j` / `k`（`↓` / `↑`）で、Sync、Lane color、Pasteis mode、Delete account の 4 行を移ります。フォーカスのある行の先頭の列に `▌` を付けます（Sync は同期の行、Lane color は見出し、Delete account は `[D] Delete account` の行）。
+- `S` は、どの行からでも GitHub から再同期します（`PUT /v1/me/github`）。Sync の行では `Enter` も同じです。成功したら、アカウントを応答で差し替え（`Unread` の数は差し替えません）、`(synced just now)` と表示し、自分のプロフィールを開いていれば読み込み直します。
+- Lane color の行では、`←` / `→`（`h` / `l`）で、Auto、6 色、custom の順にカーソルを動かします。端で止まり、折り返しません。保存済みの選択は `(•)`、カーソルは選択肢の手前の `▌` で示し、別の行にフォーカスがあるときはカーソルを描きません。preview はカーソルのある選択肢の色で描きます。タブか画面を離れると、カーソルは保存済みの選択に戻ります。
+- `Enter` で、カーソルの選択肢を `PUT /v1/me/lane` で送ります。画面は楽観的に変えず、応答のアカウントで、保存済みの選択、preview、Aside の色を変えます。自分の commit の作者の lane も、持っているすべての写しで同じ色にします。送信中の `Enter` は何もしません。
+- custom で `Enter` を押すと、`#______` の欄に 6 桁の 16 進数を入力します。`0-9a-f` だけが入り（大文字は小文字にします）、7 桁目以降は入りません。`Backspace` で 1 桁戻し、6 桁そろった `Enter` で送ります。応答が返るまで欄は開いたままで、失敗したら欄を残してトーストを出します。`Esc` は欄を閉じるだけで、Settings から戻りません。
+- Pasteis mode の行では、`Enter` か `Space` でオン / オフを切り替えます（`PUT /v1/me/pasteis-mode`）。これも応答で変わり、カードのアクション行の `◓` も応答で出入りします。
+- 同じ種類の書き込み（同期、lane、pastéis モード）は、1 つずつしか飛ばしません。
+- 欄に文字を入力している間（hex の欄と、アカウントの削除の username の欄）は、`Esc` と `Enter` と `Backspace` と `Ctrl+C` 以外のキーをすべて入力として扱います。`1`〜`3` でタブは切り替わらず、`Q`、`c`、`g`、`D` も文字です。`Ctrl+C` だけが終了です。
+
+**Safety タブの操作**
+
+- Muted と Blocked は、1 本の選択で上から順にたどります。`j` / `k`、`G`（末尾）、`g g`（先頭）で動き、見出しの行は選べません。画面より長いときは、選択に合わせてスクロールします（Muted と Blocked のそれぞれで、先頭の人を選ぶと、その見出しも見えるところまでスクロールします）。
+- `u`（または `Enter`）で、選んだ人のミュート（`DELETE /v1/users/{username}/mute`）かブロック（`DELETE /v1/users/{username}/block`）を解除します。一覧からは先に除き、失敗したら元の位置に戻して選択します。そのあいだに `R` で一覧が置き換わっていたら、読み込んだ結果を正とし、その人がいなければ末尾に戻します。
+- 空の一覧は、`No muted users.` / `No blocked users.` と表示します。
+- 取るのは、それぞれの 1 ページ目（20 件）だけです。21 件目以降は、表示も解除もできません。`┊ more not shown` と表示します。
+
+**ゲスト**
+
+- ゲストも Settings を開けます。Profile と Safety は、本文の代わりに `Sign in to change these settings. [L] Sign in` を表示し、`S`、`D`、`Enter`、`Space`、`u` はサインインのダイアログを開きます。Appearance はゲストでも使えます。セッションを確認している間（Restoring）は、Settings を開けず、書き込みも何もしません。
+
+**アカウントの削除**
+
+- `D`（Profile タブだけ。フォーカスは Main）か、Delete account の行の `Enter` で、幅 50 の確認ダイアログ `Delete account` を開きます。自分の username を、大文字と小文字まで完全に一致するよう入力したときだけ、`[Enter] Delete` が出て、`Enter` で `DELETE /v1/me` を送ります。空欄や不一致の `Enter` は何もせず、送信中の `Enter` も何もしません。`Esc` で閉じます。
+- 204 が返ったら、ゲストに戻し（ゲストのデータと同じ後始末）、サインインのダイアログは開かずに、`Account deleted`（Info）のトーストを出します。ダイアログを閉じた後に届いても、別の要求の `device_not_approved` で先にゲストに戻っていても、同じです（後の場合は、後始末を二重にせず、トーストを置き換え、開いたサインインのダイアログを閉じます）。サインインし直した後に届いた 204 は、何も変えません。
+- 失敗は `write_failure_text` のトーストです。タイムアウトと通信の失敗だけは、サーバーが消したか分からないので、`could not confirm the deletion — check dev-null.sh before trying again` と表示します。ダイアログは開いたままですが、入力欄は空に戻るので、もう一度送るには username を入れ直します。送信中に `Esc` で閉じても、削除の要求は取り消されません。送信中に開き直すと、`deleting…   [Esc] Close` の状態で開き、`Enter` は何もしません。
+- **ローカルのファイルは消しません。** 鍵（`id_ed25519`）、下書き（`drafts-<account id>.toml`）、`state.toml` は残ります。サーバー側で鍵が無効になるだけで、消すかどうかは利用者に任せます。
+
+**再同期の文言**
+
+- 429 `rate_limited` は、サーバーの message（`You just synced. Try again in a minute.`）を整えて表示します。message がなければ同じ文言を固定で出します。
+- 503 `github_sync_failed` は、サーバーの message（`Could not sync from GitHub. Try again in a minute.`）を同じように表示し、なければ同じ文言を固定で出します。ほかの失敗は、いつもの書き込みの失敗の文言です。
+
 - Web 版の Terminal タブ（curl による投稿の説明）と Devices タブ（デバイス一覧）は、載せません。Terminal タブはこのアプリ自体が代わりになり、デバイス一覧は API がないからです。
-- 再同期の上限（1 回/分）を超えたときは、`You just synced. Try again in a minute.` をトーストで表示します。
-- アカウントの削除では、確認のダイアログで自分の username を入力してもらいます。取り消せない操作だからです。
 
 ### サインイン
 
@@ -822,7 +854,7 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `g g` / `G` | 先頭 / 末尾 | 一覧 | 追加 |
 | `Esc` | 戻る、モーダルを閉じる | 全体 | 追加 |
 | `Tab` / `Shift+Tab` | 次 / 前のペイン | 全体 | 追加 |
-| `1`〜`3` | タブの切り替え | Log、Settings | 追加 |
+| `1`〜`3` | タブの切り替え（欄に入力している間は文字として入ります） | Log、Settings | 追加 |
 | `1` / `2` | タブの切り替え（Profile は Commits / Replies、Followers / Following は Followers / Following） | Profile、Followers / Following | 追加 |
 | `3` / `4` | Followers / Following を開く | Profile | 追加 |
 | `f` | フォロー / フォロー解除 | Profile、Followers / Following | 追加 |
@@ -837,7 +869,10 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `d` | 削除（自分の commit のみ） | カード | 追加 |
 | `O` | ブラウザで開く。カードを選んでいればその commit、Profile でカードが 1 件もなければそのユーザーのページ | カード、Profile | 追加 |
 | `f` / `m` / `B` | フォロー / ミュート / ブロック | Profile、ユーザー一覧 | 追加 |
-| `S` / `D` | GitHub の再同期 / アカウントの削除 | Settings | 追加 |
+| `S` / `D` | GitHub の再同期 / アカウントの削除（確認あり） | Settings の Profile | 追加 |
+| `←` / `→`（`h` / `l`） | lane 色の選択肢のカーソル | Settings の Profile | 追加 |
+| `Space` | pastéis モードの切り替え（`Enter` も同じ） | Settings の Profile | 追加 |
+| `u` / `Enter` | ミュート / ブロックの解除 | Settings の Safety | 追加 |
 | `L` | サインイン | ゲスト | 追加 |
 | `R` | 読み込み直す | 全体 | 追加 |
 | `Ctrl+Enter` | 投稿（端末が `Enter` と区別できるとき） | Composer | Web（`⌘↵`） |

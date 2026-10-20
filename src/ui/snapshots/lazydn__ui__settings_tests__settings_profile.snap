@@ -6,7 +6,7 @@ expression: terminal.backend()
 "│ a social network │┃       Profile              Appearance              Safety        ┃│ ◉ myuron                     │"
 "│ for devs         │┃       ━━━━━━━                                                    ┃│ ● @myuron                    │"
 "│                  │┃                                                                  ┃│                              │"
-"│ ◉ Log            │┃ Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃│ 42 commits                   │"
+"│ ◉ Log            │┃▌Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃│ 42 commits                   │"
 "│ ◎ Notifications  │┃                                                                  ┃│ 10 following  12 followers   │"
 "│                12│┃ Lane color                                                       ┃│ ◓ 7/10 pasteis left          │"
 "│ ◯ Profile        │┃  ( ) Auto (green)  (•) ● orange  ( ) ● green  ( ) ● violet       ┃│                              │"

@@ -1,13 +1,23 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Paragraph};
 
 use crate::app::{App, ConnState, Me, Session};
+use crate::ui::theme;
 
 const KEYS: &str =
     " j/k  move     ↵  open\n c    commit   r  reply\n s    star     o  replies\n ?    all keys";
 
-fn boxed(frame: &mut Frame, area: Rect, y: &mut u16, height: u16, title: &str, text: String) {
+fn boxed(
+    frame: &mut Frame,
+    area: Rect,
+    y: &mut u16,
+    height: u16,
+    title: &str,
+    text: impl Into<Text<'static>>,
+) {
     let bottom = area.y + area.height;
     let top = area.y + *y;
     *y += height;
@@ -21,18 +31,23 @@ fn boxed(frame: &mut Frame, area: Rect, y: &mut u16, height: u16, title: &str, t
     frame.render_widget(Paragraph::new(text), inner);
 }
 
-fn me_text(me: &Me) -> String {
-    format!(
-        " ◉ {}\n ● @{}\n\n {} commits\n {} following  {} followers\n ◓ {}/{} pasteis left\n\n {}",
-        me.name,
-        me.handle,
-        me.commits,
-        me.following,
-        me.followers,
-        me.pasteis_left,
-        me.pasteis_max,
-        me.bio
-    )
+fn me_text(me: &Me, truecolor: bool) -> Text<'static> {
+    let dot = Style::new().fg(theme::lane_color(me.lane, truecolor));
+    let head = vec![
+        Line::raw(format!(" ◉ {}", me.name)),
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled("●", dot),
+            Span::raw(format!(" @{}", me.handle)),
+        ]),
+    ];
+    let rest = format!(
+        "\n {} commits\n {} following  {} followers\n ◓ {}/{} pasteis left\n\n {}",
+        me.commits, me.following, me.followers, me.pasteis_left, me.pasteis_max, me.bio
+    );
+    let mut lines = head;
+    lines.extend(rest.split('\n').map(|l| Line::raw(l.to_string())));
+    Text::from(lines)
 }
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
@@ -44,7 +59,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             } else {
                 " restoring session…"
             };
-            boxed(frame, area, &mut y, 3, "Session", text.into());
+            boxed(frame, area, &mut y, 3, "Session", text);
         }
         Session::Guest => boxed(
             frame,
@@ -52,12 +67,18 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             &mut y,
             7,
             "New to /dev/null?",
-            " Sign in with an SSH key\n to commit, star and\n follow developers.\n\n [L] Sign in"
-                .into(),
+            " Sign in with an SSH key\n to commit, star and\n follow developers.\n\n [L] Sign in",
         ),
         Session::SignedIn(me) => {
-            boxed(frame, area, &mut y, 10, "Me", me_text(me));
-            boxed(frame, area, &mut y, 6, "Keys", KEYS.into());
+            boxed(
+                frame,
+                area,
+                &mut y,
+                10,
+                "Me",
+                me_text(me, app.prefs().truecolor),
+            );
+            boxed(frame, area, &mut y, 6, "Keys", KEYS);
         }
     }
 }

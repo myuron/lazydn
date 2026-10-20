@@ -14,11 +14,11 @@ use crate::ui::layout::split;
 use crate::ui::theme;
 
 /// Inner width of Main at 120 columns (nav 20 + aside 32 + 2 borders).
-const W: usize = 66;
+pub(crate) const W: usize = 66;
 
 // --- helpers ----------------------------------------------------------------
 
-fn inner_rect(app: &App) -> Rect {
+pub(crate) fn inner_rect(app: &App) -> Rect {
     let (w, h) = app.size();
     let main = split(Rect::new(0, 0, w, h), app.layout_mode()).main;
     Rect::new(
@@ -30,7 +30,7 @@ fn inner_rect(app: &App) -> Rect {
 }
 
 /// The cells of Main's inner area, row by row, padding included.
-fn raw_rows(app: &App) -> Vec<String> {
+pub(crate) fn raw_rows(app: &App) -> Vec<String> {
     let inner = inner_rect(app);
     let terminal = render(app);
     let buffer = terminal.backend().buffer();
@@ -43,7 +43,7 @@ fn raw_rows(app: &App) -> Vec<String> {
         .collect()
 }
 
-fn rows(app: &App) -> Vec<String> {
+pub(crate) fn rows(app: &App) -> Vec<String> {
     raw_rows(app)
         .into_iter()
         .map(|r| r.trim_end().to_string())
@@ -51,31 +51,31 @@ fn rows(app: &App) -> Vec<String> {
 }
 
 /// The rows below the tab row, its underline and the blank row.
-fn body(app: &App) -> Vec<String> {
+pub(crate) fn body(app: &App) -> Vec<String> {
     rows(app).into_iter().skip(3).collect()
 }
 
-fn body_of(app: &App, count: usize) -> Vec<String> {
+pub(crate) fn body_of(app: &App, count: usize) -> Vec<String> {
     body(app).into_iter().take(count).collect()
 }
 
 /// `right` ends at column `width`, so a row with the free last column passes `W - 1`.
-fn right_aligned(left: &str, right: &str, width: usize) -> String {
+pub(crate) fn right_aligned(left: &str, right: &str, width: usize) -> String {
     let gap = width.saturating_sub(left.width() + right.width());
     format!("{left}{}{right}", " ".repeat(gap))
 }
 
-fn strs(lines: &[&str]) -> Vec<String> {
+pub(crate) fn strs(lines: &[&str]) -> Vec<String> {
     lines.iter().map(|l| l.to_string()).collect()
 }
 
-fn with_me(extra: impl FnOnce(&mut Me)) -> App {
+pub(crate) fn with_me(extra: impl FnOnce(&mut Me)) -> App {
     let mut me = fixture_me();
     extra(&mut me);
     settings_app_for(me, 120, 30)
 }
 
-fn on_tab(mut app: App, keys: &str) -> App {
+pub(crate) fn on_tab(mut app: App, keys: &str) -> App {
     type_str(&mut app, keys);
     app
 }
@@ -88,7 +88,7 @@ macro_rules! snapshot {
 }
 
 /// Safety tab at the given size with two muted users and nobody blocked.
-fn safety_two_muted(w: u16, h: u16) -> App {
+pub(crate) fn safety_two_muted(w: u16, h: u16) -> App {
     let mut app = settings_app(w, h);
     let effects = open_safety(&mut app);
     load_muted(&mut app, &effects, &["alice", "bob"], None);
@@ -169,7 +169,7 @@ fn the_profile_tab_follows_the_mockup() {
     assert_eq!(
         body_of(&app, 12),
         vec![
-            " Profile mirrored from GitHub   (synced 2h ago)   [S] Sync".to_string(),
+            "▌Profile mirrored from GitHub   (synced 2h ago)   [S] Sync".to_string(),
             String::new(),
             " Lane color".to_string(),
             "  ( ) Auto (green)  (•) ● orange  ( ) ● green  ( ) ● violet".to_string(),
@@ -268,7 +268,7 @@ fn the_synced_time_is_relative_to_the_clock() {
         let app = with_me(|me| me.github_synced_at = synced);
         assert_eq!(
             body_of(&app, 1)[0],
-            format!(" Profile mirrored from GitHub   {want}   [S] Sync")
+            format!("▌Profile mirrored from GitHub   {want}   [S] Sync")
         );
     }
 }
@@ -350,7 +350,7 @@ fn a_narrow_screen_wraps_the_radios_by_item_and_the_sync_button_onto_its_own_row
     assert_eq!(
         body_of(&app, 14),
         vec![
-            " Profile mirrored from GitHub   (synced 2h ago)".to_string(),
+            "▌Profile mirrored from GitHub   (synced 2h ago)".to_string(),
             "  [S] Sync".to_string(),
             String::new(),
             " Lane color".to_string(),
@@ -425,11 +425,11 @@ fn the_safety_tab_lists_the_muted_users_and_says_nobody_is_blocked() {
         body_of(&app, 6),
         vec![
             " Muted".to_string(),
-            right_aligned("  ◉ Alice @alice", "[m] Unmute", W - 1),
-            right_aligned("  ◉ Bob @bob", "[m] Unmute", W - 1),
+            right_aligned("▌ ◉ Alice @alice", "[u] Unmute", W - 1),
+            right_aligned("  ◉ Bob @bob", "[u] Unmute", W - 1),
             String::new(),
             " Blocked".to_string(),
-            "  nobody blocked".to_string(),
+            "  No blocked users.".to_string(),
         ]
     );
 }
@@ -444,11 +444,11 @@ fn the_blocked_users_come_with_an_unblock_hint() {
         body_of(&app, 6),
         vec![
             " Muted".to_string(),
-            "  nobody muted".to_string(),
+            "  No muted users.".to_string(),
             String::new(),
             " Blocked".to_string(),
-            right_aligned("  ◉ Carol @carol", "[B] Unblock", W - 1),
-            right_aligned("  ◉ Dave @dave", "[B] Unblock", W - 1),
+            right_aligned("▌ ◉ Carol @carol", "[u] Unblock", W - 1),
+            right_aligned("  ◉ Dave @dave", "[u] Unblock", W - 1),
         ]
     );
 }
@@ -464,7 +464,7 @@ fn a_user_without_a_name_is_listed_by_the_username() {
     });
     assert_eq!(
         body_of(&app, 2)[1],
-        right_aligned("  ◉ dora @dora", "[m] Unmute", W - 1)
+        right_aligned("▌ ◉ dora @dora", "[u] Unmute", W - 1)
     );
 }
 
@@ -500,7 +500,7 @@ fn a_failed_list_shows_the_retry_hint_and_the_other_list_is_kept() {
             " error: http_500 — press R to retry".to_string(),
             String::new(),
             " Blocked".to_string(),
-            right_aligned("  ◉ Carol @carol", "[B] Unblock", W - 1),
+            right_aligned("▌ ◉ Carol @carol", "[u] Unblock", W - 1),
         ]
     );
 }
@@ -515,10 +515,10 @@ fn both_lists_empty_say_so() {
         body_of(&app, 5),
         strs(&[
             " Muted",
-            "  nobody muted",
+            "  No muted users.",
             "",
             " Blocked",
-            "  nobody blocked"
+            "  No blocked users."
         ])
     );
 }
@@ -533,11 +533,11 @@ fn a_list_with_a_next_page_says_that_more_is_not_shown() {
         body_of(&app, 8),
         vec![
             " Muted".to_string(),
-            right_aligned("  ◉ Alice @alice", "[m] Unmute", W - 1),
+            right_aligned("▌ ◉ Alice @alice", "[u] Unmute", W - 1),
             " ┊ more not shown".to_string(),
             String::new(),
             " Blocked".to_string(),
-            right_aligned("  ◉ Carol @carol", "[B] Unblock", W - 1),
+            right_aligned("  ◉ Carol @carol", "[u] Unblock", W - 1),
             " ┊ more not shown".to_string(),
             String::new(),
         ]
@@ -545,9 +545,31 @@ fn a_list_with_a_next_page_says_that_more_is_not_shown() {
 }
 
 #[test]
-fn the_safety_lists_carry_no_selection_marker() {
-    let app = safety_two_muted(120, 30);
-    assert!(!rows(&app).iter().any(|r| r.contains('▌')));
+fn only_the_selected_person_carries_the_marker_and_the_cursor_background() {
+    let mut app = safety_two_muted(120, 30);
+    let marked: Vec<usize> = rows(&app)
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.contains('▌'))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(marked, vec![4]);
+    type_str(&mut app, "j");
+    let marked: Vec<usize> = rows(&app)
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.contains('▌'))
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(marked, vec![5]);
+
+    let inner = inner_rect(&app);
+    let terminal = render(&app);
+    let buffer = terminal.backend().buffer();
+    let want = theme::cursor_bg(app.prefs().truecolor);
+    let y = inner.y + 5;
+    assert_eq!(buffer[(inner.x + 2, y)].bg, want);
+    assert_ne!(buffer[(inner.x + 2, y - 1)].bg, want);
 }
 
 // --- 7. widths --------------------------------------------------------------
@@ -625,12 +647,12 @@ fn safety_rows_end_with_their_button_even_for_long_names() {
             .collect();
         assert_eq!(user_rows.len(), 2, "{w}x{h}");
         assert!(
-            user_rows[0].ends_with("[m] Unmute"),
+            user_rows[0].ends_with("[u] Unmute"),
             "{w}x{h}: {}",
             user_rows[0]
         );
         assert!(
-            user_rows[1].ends_with("[B] Unblock"),
+            user_rows[1].ends_with("[u] Unblock"),
             "{w}x{h}: {}",
             user_rows[1]
         );

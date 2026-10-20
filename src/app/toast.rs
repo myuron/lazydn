@@ -115,7 +115,9 @@ pub(super) fn failure_in(action: &Action) -> Option<&Failure> {
         | Action::ReportFailed { failure, .. }
         | Action::FollowFailed { failure, .. }
         | Action::MuteFailed { failure, .. }
-        | Action::BlockFailed { failure, .. } => Some(failure),
+        | Action::BlockFailed { failure, .. }
+        | Action::MeWriteFailed { failure, .. }
+        | Action::AccountDeleteFailed { failure, .. } => Some(failure),
         _ => None,
     }
 }
@@ -142,7 +144,9 @@ pub(super) fn req_in(action: &Action) -> Option<ReqId> {
         | Action::ReportFailed { req, .. }
         | Action::FollowFailed { req, .. }
         | Action::MuteFailed { req, .. }
-        | Action::BlockFailed { req, .. } => Some(*req),
+        | Action::BlockFailed { req, .. }
+        | Action::MeWriteFailed { req, .. }
+        | Action::AccountDeleteFailed { req, .. } => Some(*req),
         _ => None,
     }
 }

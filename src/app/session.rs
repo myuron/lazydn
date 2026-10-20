@@ -33,14 +33,20 @@ impl App {
 
     /// Drops everything the account had loaded, since the server no longer vouches for it.
     fn return_to_guest(&mut self, toast_text: String) -> Vec<Effect> {
+        let mut effects = self.drop_to_guest();
+        self.show_toast(ToastKind::Error, toast_text);
+        effects.extend(self.open_sign_in());
+        effects
+    }
+
+    /// Becomes a guest on the Latest tab, writing the unsaved drafts first.
+    pub(super) fn drop_to_guest(&mut self) -> Vec<Effect> {
         let mut effects = self.save_effect();
         self.session = Session::Guest;
         self.reset_account_data();
         self.show(Screen::Log(LogTab::Latest));
-        self.show_toast(ToastKind::Error, toast_text);
         self.reconcile_scroll();
         effects.push(Effect::UseGuestClient);
-        effects.extend(self.open_sign_in());
         effects
     }
 
@@ -65,6 +71,7 @@ impl App {
         self.writes.clear();
         self.forget_removals();
         self.forget_user_writes();
+        self.forget_settings_writes();
         self.forget_composer_state();
     }
 

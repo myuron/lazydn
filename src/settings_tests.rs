@@ -1,7 +1,7 @@
 use crossterm::event::KeyCode;
 
 use crate::action::{Action, Effect, Failure};
-use crate::app::{App, Me, Modal, Prefs, Screen, SettingsTab, Theme};
+use crate::app::{App, Me, Prefs, Screen, SettingsTab, Theme};
 use crate::feed::{LoadState, ReqId};
 use crate::model::Page;
 use crate::profile_tests::{upage, user_of};
@@ -143,15 +143,6 @@ fn the_tab_actions_are_applied_directly_too() {
     let mut app = settings_app(120, 30);
     app.update(Action::SwitchSettingsTab(SettingsTab::Appearance));
     assert_eq!(app.settings().tab, SettingsTab::Appearance);
-}
-
-#[test]
-fn a_guest_cannot_open_settings() {
-    let mut app = guest(120, 30);
-    press(&mut app, KeyCode::Esc);
-    type_str(&mut app, "gs");
-    assert!(matches!(app.screen(), Screen::Log(_)));
-    assert_eq!(app.modal(), Some(Modal::SignIn));
 }
 
 #[test]
@@ -335,23 +326,6 @@ fn going_back_to_settings_uses_the_cached_lists() {
     assert_eq!(usernames(&app.settings().muted.users), vec!["alice"]);
     assert_eq!(app.settings().tab, SettingsTab::Safety);
     assert!(app.settings().blocked.loaded_once);
-}
-
-#[test]
-fn the_safety_lists_have_no_selection_to_move() {
-    let mut app = settings_app(120, 30);
-    let effects = open_safety(&mut app);
-    load_muted(&mut app, &effects, &["alice", "bob"], Some("c1"));
-    load_blocked(&mut app, &effects, &["carol"], None);
-    for key in [
-        KeyCode::Char('j'),
-        KeyCode::Char('k'),
-        KeyCode::Char('G'),
-        KeyCode::Enter,
-    ] {
-        assert!(press(&mut app, key).is_empty(), "{key:?}");
-    }
-    assert_eq!(app.screen(), Screen::Settings);
 }
 
 // --- Safety: a first fetch that failed is retried on re-entry ----------------

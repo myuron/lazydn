@@ -124,6 +124,10 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::MuteUser { .. }
         | Effect::BlockUser { .. }
         | Effect::CopyLink(_)
+        | Effect::SyncGithub { .. }
+        | Effect::SetLane { .. }
+        | Effect::SetPasteisMode { .. }
+        | Effect::DeleteAccount { .. }
         | Effect::Quit => None,
     }
 }

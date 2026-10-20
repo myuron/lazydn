@@ -50,6 +50,45 @@ fn map_sign_in_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
+/// A text field reads everything as text, so that no global key fires while typing; only Esc, Enter, Backspace and
+/// Ctrl+C mean something else.
+fn map_text_key(key: KeyEvent, esc: Action) -> Option<Action> {
+    let pressed = key.kind == KeyEventKind::Press;
+    let typed = key.kind != KeyEventKind::Release;
+    let text = |t| Some(Action::SettingsText(t));
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return (pressed && key.code == KeyCode::Char('c')).then_some(Action::Quit);
+    }
+    match key.code {
+        KeyCode::Esc if pressed => Some(esc),
+        KeyCode::Enter if pressed => text(SettingsText::Submit),
+        KeyCode::Backspace if typed => text(SettingsText::Backspace),
+        KeyCode::Char(c) if typed && !key.modifiers.contains(KeyModifiers::ALT) => {
+            text(SettingsText::Insert(c))
+        }
+        _ => None,
+    }
+}
+
+/// The keys of the Settings tabs while Main has the focus; the tab keys `1`..`3` are handled before.
+fn map_settings_key(app: &App, key: KeyEvent) -> Option<Action> {
+    let step = |n: i8| Some(Action::SettingsStep(n));
+    match (app.settings().tab, key.code) {
+        (SettingsTab::Appearance, _) => None,
+        (_, KeyCode::Char('j') | KeyCode::Down) => Some(Action::MoveSelection(1)),
+        (_, KeyCode::Char('k') | KeyCode::Up) => Some(Action::MoveSelection(-1)),
+        (_, KeyCode::Enter) => Some(Action::OpenSelected),
+        (SettingsTab::Profile, KeyCode::Char('l') | KeyCode::Right) => step(1),
+        (SettingsTab::Profile, KeyCode::Char('h') | KeyCode::Left) => step(-1),
+        (SettingsTab::Profile, KeyCode::Char(' ')) => Some(Action::SettingsToggle),
+        (SettingsTab::Profile, KeyCode::Char('S')) => Some(Action::SyncGithub),
+        (SettingsTab::Profile, KeyCode::Char('D')) => Some(Action::OpenAccountDelete),
+        (SettingsTab::Safety, KeyCode::Char('G')) => Some(Action::SelectLast),
+        (SettingsTab::Safety, KeyCode::Char('u')) => Some(Action::ReleaseSelected),
+        _ => None,
+    }
+}
+
 /// The confirmation reads `y`, `n`, Esc and Ctrl+C; every other key is ignored so that nothing slips past it.
 fn map_confirm_key(key: KeyEvent, yes: Action) -> Option<Action> {
     if key.kind != KeyEventKind::Press {
@@ -130,9 +169,13 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     match app.modal() {
         Some(Modal::ConfirmDelete) => return map_confirm_key(key, Action::ConfirmDelete),
         Some(Modal::ConfirmBlock) => return map_confirm_key(key, Action::ConfirmBlock),
+        Some(Modal::ConfirmAccountDelete) => return map_text_key(key, Action::CloseModal),
         Some(Modal::Report) => return map_report_key(app, key),
         Some(Modal::Menu) => return map_menu_key(app, key),
         _ => {}
+    }
+    if app.settings_typing() && app.modal().is_none() {
+        return map_text_key(key, Action::SettingsText(SettingsText::Cancel));
     }
     if key.kind != KeyEventKind::Press {
         return None;
@@ -161,8 +204,11 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
                 | Screen::Connections(..)
                 | Screen::Notifications
         );
+    let safety_list = app.focus() == Pane::Main
+        && matches!(app.screen(), Screen::Settings)
+        && app.settings().tab == SettingsTab::Safety;
     if app.g_pending() {
-        if list && key.code == KeyCode::Char('g') {
+        if (list || safety_list) && key.code == KeyCode::Char('g') {
             return Some(Action::SelectFirst);
         }
         return Some(match key.code {
@@ -235,6 +281,12 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             _ => {}
         }
     }
+    if app.focus() == Pane::Main
+        && matches!(app.screen(), Screen::Settings)
+        && let Some(action) = map_settings_key(app, key)
+    {
+        return Some(action);
+    }
     let commit_cards = matches!(
         app.screen(),
         Screen::Log(_) | Screen::Saved | Screen::Thread(_) | Screen::Profile(_)
@@ -294,6 +346,17 @@ fn g_target(app: &App, c: char) -> Option<Screen> {
         'v' => Some(Screen::Saved),
         _ => None,
     }
+}
+
+/// A key typed into the hex field of the lane color or into the username field of the account deletion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsText {
+    Insert(char),
+    Backspace,
+    /// Enter.
+    Submit,
+    /// Esc in the hex field; the deletion dialog closes with `CloseModal`.
+    Cancel,
 }
 
 /// A key typed in the more menu; Esc and Ctrl+C are `CloseModal` and `Quit` instead.

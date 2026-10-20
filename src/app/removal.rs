@@ -72,6 +72,7 @@ impl App {
             Some(Modal::Report) => self.report = None,
             Some(Modal::Menu) => self.menu = None,
             Some(Modal::ConfirmBlock) => self.close_block_confirm(),
+            Some(Modal::ConfirmAccountDelete) => self.account_delete = None,
             _ => {}
         }
         self.modal = None;

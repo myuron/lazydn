@@ -77,10 +77,21 @@ Drafts are saved about two seconds after you stop typing, and at once when you c
 | `f` | Follow or unfollow the person on a profile, or on the selected row of Followers / Following |
 | `m` | Mute or unmute the person on a profile |
 | `B` | Block the person on a profile, after a confirmation (`y` blocks, `n` or `Esc` cancels); on a blocked profile, unblock |
+| `S` | Sync your profile from GitHub (Settings → Profile) |
+| `D` | Delete your account, after typing your username (Settings → Profile) |
+| `Left` / `Right`, `h` / `l` | Move over the lane colors (Settings → Profile); `Enter` saves the choice, and on `custom` it opens a field for six hex digits |
+| `Space` | Turn the pastéis mode on or off (Settings → Profile; `Enter` does the same) |
+| `u` / `Enter` | Unmute or unblock the selected person (Settings → Safety) |
 | `?` | Help |
 | `Q` | Quit |
 
 While you write (`c`, `r` or `q`), every key goes into the text: `Ctrl+Enter` or `Ctrl+S` posts and `Esc` closes. The draft is kept.
+
+In Settings, a guest can use the Appearance tab; the Profile and Safety tabs show a sign-in hint, and their write keys open the sign-in dialog. Typing a lane color or your username for the account deletion also sends every key into the field, except `Esc`, `Enter`, `Backspace` and `Ctrl+C`.
+
+Deleting the account (`D`, then your username exactly as it is written, then `Enter`) cannot be undone. It turns you into a guest, but **it does not delete anything on your machine**: the device key, the drafts and `state.toml` stay in place, and the server simply stops accepting the key. Remove them yourself if you want to. If the answer is lost (a timeout), lazydn says it could not confirm the deletion; check dev-null.sh before trying again.
+
+The Safety tab lists only the first page (20 people) of the muted and the blocked users, so the 21st and later cannot be seen or released from lazydn.
 
 ## Development
 

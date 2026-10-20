@@ -59,3 +59,11 @@ pub struct MoreMenu {
     /// Index into `items`.
     pub selected: usize,
 }
+
+/// The confirmation that asks for your username before the account is deleted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AccountDelete {
+    pub input: String,
+    /// Whether the deletion is out; the dialog takes no Enter then.
+    pub sending: bool,
+}

@@ -63,6 +63,8 @@ mod session_tests;
 #[cfg(test)]
 mod settings_tests;
 #[cfg(test)]
+mod settings_write_tests;
+#[cfg(test)]
 mod signin_flow_tests;
 #[cfg(test)]
 mod signin_tests;

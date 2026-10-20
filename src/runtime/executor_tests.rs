@@ -2217,3 +2217,296 @@ fn a_panicked_follow_mute_or_block_fails_into_its_failed_action_with_the_req() {
         );
     }
 }
+
+// --- 9. your own settings: sync, lane, pastéis mode and account deletion ---------------------------
+
+fn sync_effect() -> Effect {
+    Effect::SyncGithub { req: REQ }
+}
+
+fn lane_effect(lane: crate::model::LaneSetting) -> Effect {
+    Effect::SetLane { lane, req: REQ }
+}
+
+fn mode_effect(enabled: bool) -> Effect {
+    Effect::SetPasteisMode { enabled, req: REQ }
+}
+
+fn delete_account_effect() -> Effect {
+    Effect::DeleteAccount { req: REQ }
+}
+
+/// Every one of the four, with the verb and the path it calls.
+fn settings_writes() -> Vec<(Effect, &'static str, &'static str)> {
+    vec![
+        (sync_effect(), "PUT", "/api/v1/me/github"),
+        (
+            lane_effect(crate::model::LaneSetting::Automatic),
+            "PUT",
+            "/api/v1/me/lane",
+        ),
+        (mode_effect(true), "PUT", "/api/v1/me/pasteis-mode"),
+        (delete_account_effect(), "DELETE", "/api/v1/me"),
+    ]
+}
+
+fn failed_settings_write(effect: &Effect, failure: Failure) -> Action {
+    use crate::action::MeWrite;
+    let me_write = |kind| Action::MeWriteFailed {
+        kind,
+        req: REQ,
+        failure: failure.clone(),
+    };
+    match effect {
+        Effect::SyncGithub { .. } => me_write(MeWrite::Sync),
+        Effect::SetLane { .. } => me_write(MeWrite::Lane),
+        Effect::SetPasteisMode { .. } => me_write(MeWrite::PasteisMode),
+        Effect::DeleteAccount { .. } => Action::AccountDeleteFailed { req: REQ, failure },
+        other => panic!("not a settings write: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_sync_a_lane_and_a_mode_put_to_their_endpoints_and_answer_with_the_account() {
+    use crate::action::MeWrite;
+    for (effect, kind) in [
+        (sync_effect(), MeWrite::Sync),
+        (
+            lane_effect(crate::model::LaneSetting::Automatic),
+            MeWrite::Lane,
+        ),
+        (mode_effect(true), MeWrite::PasteisMode),
+    ] {
+        let (verb, p) = match kind {
+            MeWrite::Sync => ("PUT", "/api/v1/me/github"),
+            MeWrite::Lane => ("PUT", "/api/v1/me/lane"),
+            MeWrite::PasteisMode => ("PUT", "/api/v1/me/pasteis-mode"),
+        };
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, json(ME)).await;
+
+        let (results, status) = split(execute(&signed(&server), effect.clone()).await);
+
+        assert_eq!(
+            results,
+            vec![Action::MeWriteDone {
+                kind,
+                req: REQ,
+                response: Box::new(parse::<MeResponse>(ME)),
+            }],
+            "{effect:?}"
+        );
+        assert_eq!(status, vec![ONLINE], "{effect:?}");
+        assert_eq!(received(&server).await.len(), 1, "{effect:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_sync_sends_no_body() {
+    let server = MockServer::start().await;
+    serve_method(&server, "PUT", "/api/v1/me/github", json(ME)).await;
+
+    execute(&signed(&server), sync_effect()).await;
+
+    assert!(
+        received(&server)
+            .await
+            .first()
+            .expect("a request")
+            .body
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn the_lane_body_carries_the_choice() {
+    use crate::model::{LaneSetting, Rgb};
+    let cases = [
+        (LaneSetting::Automatic, serde_json::json!({"lane": null})),
+        (LaneSetting::Palette(2), serde_json::json!({"lane": 2})),
+        (
+            LaneSetting::Color(Rgb(0x3a, 0x7b, 0xd5)),
+            serde_json::json!({"lane": null, "color": "#3a7bd5"}),
+        ),
+    ];
+    for (lane, want) in cases {
+        let server = MockServer::start().await;
+        serve_method(&server, "PUT", "/api/v1/me/lane", json(ME)).await;
+
+        execute(&signed(&server), lane_effect(lane)).await;
+
+        let requests = received(&server).await;
+        let request = requests.first().expect("a request");
+        assert_eq!(sent_json(request), want, "{lane:?}");
+    }
+}
+
+#[tokio::test]
+async fn the_mode_body_carries_the_flag() {
+    for enabled in [true, false] {
+        let server = MockServer::start().await;
+        serve_method(&server, "PUT", "/api/v1/me/pasteis-mode", json(ME)).await;
+
+        execute(&signed(&server), mode_effect(enabled)).await;
+
+        assert_eq!(
+            sent_json(received(&server).await.first().expect("a request")),
+            serde_json::json!({"enabled": enabled})
+        );
+    }
+}
+
+#[tokio::test]
+async fn deleting_the_account_calls_delete_me_and_answers_with_the_request() {
+    let server = MockServer::start().await;
+    serve_method(&server, "DELETE", "/api/v1/me", no_content()).await;
+
+    let (results, status) = split(execute(&signed(&server), delete_account_effect()).await);
+
+    assert_eq!(results, vec![Action::AccountDeleted { req: REQ }]);
+    assert_eq!(status, vec![ONLINE]);
+    assert_eq!(received(&server).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_refused_settings_write_carries_the_code_and_the_message_of_the_server() {
+    let cases = [
+        (sync_effect(), 503, "github_sync_failed"),
+        (sync_effect(), 401, "device_not_approved"),
+        (
+            lane_effect(crate::model::LaneSetting::Palette(1)),
+            422,
+            "validation_failed",
+        ),
+        (mode_effect(false), 403, "forbidden"),
+        (delete_account_effect(), 401, "device_not_approved"),
+    ];
+    for (effect, status, code) in cases {
+        let (_, verb, p) = settings_writes()
+            .into_iter()
+            .find(|(e, _, _)| std::mem::discriminant(e) == std::mem::discriminant(&effect))
+            .expect("a known write");
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, error_body(status, code)).await;
+
+        let (results, online) = split(execute(&signed(&server), effect.clone()).await);
+
+        let failure = Failure {
+            code: code.into(),
+            retry_after: None,
+            message: Some("m".into()),
+        };
+        assert_eq!(
+            results,
+            vec![failed_settings_write(&effect, failure)],
+            "{effect:?} {status}"
+        );
+        assert_eq!(online, vec![ONLINE], "{effect:?} {status}");
+    }
+}
+
+#[tokio::test]
+async fn a_rate_limited_sync_carries_retry_after_and_the_message() {
+    let server = MockServer::start().await;
+    serve_method(
+        &server,
+        "PUT",
+        "/api/v1/me/github",
+        ResponseTemplate::new(429)
+            .insert_header("Retry-After", "20")
+            .set_body_raw(
+                br#"{"message":"You just synced. Try again in a minute.","code":"rate_limited"}"#
+                    .to_vec(),
+                "application/json",
+            ),
+    )
+    .await;
+
+    let (results, _) = split(execute(&signed(&server), sync_effect()).await);
+
+    let failure = Failure {
+        code: "rate_limited".into(),
+        retry_after: Some(20),
+        message: Some("You just synced. Try again in a minute.".into()),
+    };
+    assert_eq!(
+        results,
+        vec![failed_settings_write(&sync_effect(), failure)]
+    );
+}
+
+#[tokio::test]
+async fn a_settings_write_that_cannot_reach_the_server_fails_as_network() {
+    for (effect, _, _) in settings_writes() {
+        let actions = execute(&unreachable_client(), effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![
+                failed_settings_write(&effect, Failure::new("network")),
+                Action::ApiStatus {
+                    rate: None,
+                    online: false
+                }
+            ],
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_deletion_slower_than_the_client_timeout_fails_as_network() {
+    let server = MockServer::start().await;
+    serve_method(
+        &server,
+        "DELETE",
+        "/api/v1/me",
+        no_content().set_delay(Duration::from_secs(1)),
+    )
+    .await;
+    let client = signed(&server).with_timeout(Duration::from_millis(100));
+
+    let actions = execute(&client, delete_account_effect()).await;
+
+    assert_eq!(
+        actions,
+        vec![
+            failed_settings_write(&delete_account_effect(), Failure::new("network")),
+            Action::ApiStatus {
+                rate: None,
+                online: false
+            }
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_guest_can_make_no_settings_write_and_nothing_is_sent() {
+    let server = MockServer::start().await;
+    let guest = client_for(&server.uri(), false);
+
+    for (effect, _, _) in settings_writes() {
+        let actions = execute(&guest, effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![failed_settings_write(
+                &effect,
+                Failure::new("sign_in_required")
+            )],
+            "{effect:?}"
+        );
+    }
+    assert!(received(&server).await.is_empty());
+}
+
+#[test]
+fn a_panicked_settings_write_fails_into_its_failed_action_with_the_req() {
+    for (effect, _, _) in settings_writes() {
+        assert_eq!(
+            failure_for(&effect, "panic"),
+            Some(failed_settings_write(&effect, Failure::new("panic"))),
+            "{effect:?}"
+        );
+    }
+}

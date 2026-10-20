@@ -15,6 +15,7 @@ mod removal;
 mod report;
 mod session;
 mod settings;
+mod settings_write;
 mod settle;
 mod signin;
 mod status;
@@ -147,6 +148,8 @@ pub enum Modal {
     Report,
     /// The list of everything that can be done to the selected card.
     Menu,
+    /// Waiting for the username before the account is deleted.
+    ConfirmAccountDelete,
     /// Waiting for `y` or `n` before a block.
     ConfirmBlock,
 }
@@ -275,6 +278,15 @@ pub struct App {
     user_writes: HashMap<(people::UserWriteKind, String), ReqId>,
     /// The person the block waits for `y` about.
     block_confirm: Option<String>,
+    /// The open confirmation of the account deletion.
+    account_delete: Option<crate::dialogs::AccountDelete>,
+    /// The deletion that is out, with the id of the account it was sent for. It outlives the account data on
+    /// purpose, because the answer arrives after a return to a guest too.
+    pending_account_deletion: Option<(ReqId, String)>,
+    /// The sync, lane and pastéis mode writes that are out.
+    me_writes: HashMap<crate::action::MeWrite, ReqId>,
+    /// The people taken off a Safety list whose release is out.
+    releases: settings_write::Releases,
 }
 
 impl App {
@@ -357,6 +369,10 @@ impl App {
             reports: HashMap::new(),
             user_writes: HashMap::new(),
             block_confirm: None,
+            account_delete: None,
+            pending_account_deletion: None,
+            me_writes: HashMap::new(),
+            releases: HashMap::new(),
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
             let text = toast::key_error_text(error, path);
@@ -366,6 +382,7 @@ impl App {
     }
 
     pub fn update(&mut self, action: Action) -> Vec<Effect> {
+        let answered_deletion = self.take_deletion_answer(&action);
         if let Some(effects) = self.handle_rejection(&action) {
             return effects;
         }
@@ -675,6 +692,26 @@ impl App {
                 failure,
                 ..
             } => self.block_failed(&username, req, &failure),
+            Action::SettingsStep(step) => self.settings_step(step),
+            Action::SettingsToggle => effects.extend(self.guarded_settings_toggle()),
+            Action::SyncGithub => effects.extend(self.sync_github()),
+            Action::OpenAccountDelete => effects.extend(self.open_account_delete()),
+            Action::ReleaseSelected => effects.extend(self.release_selected()),
+            Action::SettingsText(text) => effects.extend(self.settings_text(text)),
+            Action::MeWriteDone {
+                kind,
+                req,
+                response,
+            } => effects.extend(self.me_write_done(kind, req, &response)),
+            Action::MeWriteFailed { kind, req, failure } => {
+                self.me_write_failed(kind, req, &failure)
+            }
+            Action::AccountDeleted { .. } => {
+                effects.extend(self.account_deleted(answered_deletion))
+            }
+            Action::AccountDeleteFailed { failure, .. } => {
+                self.account_delete_failed(answered_deletion, &failure)
+            }
             Action::OpenMenu => effects.extend(self.open_menu()),
             Action::MenuKey(key) => effects.extend(self.on_menu_key(key)),
             Action::Delete => effects.extend(self.open_delete()),
@@ -799,11 +836,10 @@ impl App {
         // Relies on own_handle() being empty for a guest, which is what makes g p and the Nav target Profile(""); other profiles are public.
         matches!(
             screen,
-            Screen::Log(LogTab::Following)
-                | Screen::Notifications
-                | Screen::Saved
-                | Screen::Settings
+            Screen::Log(LogTab::Following) | Screen::Notifications | Screen::Saved
         ) || matches!(screen, Screen::Profile(u) if u.is_empty())
+            // A guest may change how the app looks; only a session being confirmed has to wait.
+            || matches!((screen, &self.session), (Screen::Settings, Session::Restoring))
     }
 
     /// `Err` carries the effects of opening the sign-in dialog when a guest targets a protected screen.
@@ -846,6 +882,11 @@ impl App {
     }
 
     fn show(&mut self, screen: Screen) {
+        // The cursor and the field are only ever half of an edit, so they do not outlive the visit.
+        if matches!(self.screen, Screen::Settings) && !matches!(screen, Screen::Settings) {
+            self.settings.lane_cursor = None;
+            self.settings.hex_input = None;
+        }
         self.screen = screen;
         self.sync_cursor();
     }
@@ -937,6 +978,11 @@ impl App {
         self.compose.is_some() && self.modal != Some(Modal::SignIn)
     }
 
+    /// The username dialog of the account deletion, while it is open.
+    pub fn account_delete(&self) -> Option<&crate::dialogs::AccountDelete> {
+        self.account_delete.as_ref()
+    }
+
     pub fn keyboard(&self) -> KeyboardMode {
         self.keyboard
     }
@@ -1014,7 +1060,7 @@ impl App {
             ScreenKind::Thread(_) => self.thread_open_selected(),
             ScreenKind::Profile(_) => self.profile_open_selected(),
             ScreenKind::Connections(..) => self.conn_open_selected(),
-            ScreenKind::Settings => Vec::new(),
+            ScreenKind::Settings => self.settings_enter(),
             ScreenKind::Feed(_) => {
                 let id = self
                     .current_feed()
@@ -1120,7 +1166,10 @@ impl App {
             ScreenKind::Profile(name) => self.profile_select(&name, index),
             ScreenKind::Connections(name, tab) => self.conn_select(&name, tab, index),
             ScreenKind::Thread(id) => self.thread_select(&id, index),
-            ScreenKind::Settings => Vec::new(),
+            ScreenKind::Settings => {
+                self.settings_select(index);
+                Vec::new()
+            }
             ScreenKind::Feed(key) => {
                 self.feeds.entry(key).or_default().select(index);
                 self.prefetch()
@@ -1143,7 +1192,10 @@ impl App {
                 let current = self.threads.get(&id).map_or(0, |t| t.selected);
                 self.thread_select(&id, current.saturating_add_signed(step as isize))
             }
-            ScreenKind::Settings => Vec::new(),
+            ScreenKind::Settings => {
+                self.settings_move(step);
+                Vec::new()
+            }
             ScreenKind::Feed(key) => {
                 let feed = &self.feeds[&key];
                 // A failed append must not block this: the user asked for the newest items.
@@ -1181,7 +1233,7 @@ impl App {
             ScreenKind::Profile(name) => return self.reconcile_profile_scroll(&name),
             ScreenKind::Connections(name, tab) => return self.reconcile_conn_scroll(&name, tab),
             ScreenKind::Thread(id) => return self.reconcile_thread_scroll(&id),
-            ScreenKind::Settings => return,
+            ScreenKind::Settings => return self.reconcile_settings_scroll(),
             ScreenKind::Feed(key) => key,
         };
         let Some(main) = self.main_area() else {

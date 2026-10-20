@@ -1,0 +1,28 @@
+---
+source: src/ui/settings_write_tests.rs
+expression: terminal.backend()
+---
+"┌──┐┏ Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"│  │┃         Profile                Appearance                Safety          ┃"
+"│ ◉│┃         ━━━━━━━                                                          ┃"
+"│ ◎│┃                                                                          ┃"
+"│ ◯│┃ Profile mirrored from GitHub   (synced 2h ago)   [S] Sync                ┃"
+"│ ⊡│┃                                                                          ┃"
+"│▌⚙│┃▌Lane color                                                               ┃"
+"│  │┃  ( ) Auto (green)  ( ) ● orange  (•) ● green  ( ) ● violet  ( ) ● teal   ┃"
+"│ +│┃  ( ) ● rose  ( ) ● ochre ▌( ) custom #3a7b__                             ┃"
+"│  │┃  preview:  ◉──●──●  myuron                                               ┃"
+"│  │┃                                                                          ┃"
+"│  │┃ Pasteis mode                                                      [x] on ┃"
+"│  │┃  10 per day, resets 00:00 UTC                                            ┃"
+"│  │┃                                                                          ┃"
+"│  │┃ Danger zone                                                              ┃"
+"│  │┃  [D] Delete account                                                      ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" Settings  j/k move  ↵ open  c commit  ? help                               -/- "

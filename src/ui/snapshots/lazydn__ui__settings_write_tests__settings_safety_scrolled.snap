@@ -1,0 +1,28 @@
+---
+source: src/ui/settings_write_tests.rs
+expression: terminal.backend()
+---
+"┌──┐┏ Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"│  │┃         Profile                Appearance                Safety          ┃"
+"│ ◉│┃                                                          ━━━━━━          ┃"
+"│ ◎│┃                                                                          ┃"
+"│ ◯│┃  ◉ Elena @elena                                               [u] Unmute ┃"
+"│ ⊡│┃  ◉ Felix @felix                                               [u] Unmute ┃"
+"│▌⚙│┃  ◉ Grace @grace                                               [u] Unmute ┃"
+"│  │┃  ◉ Hiram @hiram                                               [u] Unmute ┃"
+"│ +│┃  ◉ Irene @irene                                               [u] Unmute ┃"
+"│  │┃  ◉ Jonas @jonas                                               [u] Unmute ┃"
+"│  │┃  ◉ Karin @karin                                               [u] Unmute ┃"
+"│  │┃  ◉ Lucas @lucas                                               [u] Unmute ┃"
+"│  │┃                                                                          ┃"
+"│  │┃ Blocked                                                                  ┃"
+"│  │┃  ◉ Nadia @nadia                                              [u] Unblock ┃"
+"│  │┃  ◉ Oscar @oscar                                              [u] Unblock ┃"
+"│  │┃  ◉ Petra @petra                                              [u] Unblock ┃"
+"│  │┃  ◉ Quinn @quinn                                              [u] Unblock ┃"
+"│  │┃  ◉ Ravi @ravi                                                [u] Unblock ┃"
+"│  │┃  ◉ Sofia @sofia                                              [u] Unblock ┃"
+"│  │┃  ◉ Tomas @tomas                                              [u] Unblock ┃"
+"│  │┃▌ ◉ Ursula @ursula                                            [u] Unblock ┃"
+"└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" Settings  j/k move  ↵ open  c commit  ? help                               -/- "

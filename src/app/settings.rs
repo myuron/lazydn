@@ -1,4 +1,4 @@
-use super::{App, Screen, SettingsTab};
+use super::{App, Screen, Session, SettingsTab};
 use crate::action::Effect;
 use crate::feed::{LoadState, Pending, ReqId};
 use crate::model::{Page, User};
@@ -14,7 +14,7 @@ impl UserList {
     /// True when the first page was never fetched, or the only attempt so far failed.
     fn needs_entry_fetch(&self) -> bool {
         let failed_first = self.users.is_empty() && matches!(self.load, LoadState::Failed { .. });
-        self.pending.is_none() && (!self.loaded_once || failed_first)
+        self.pending.is_none() && (!self.loaded_once || self.stale || failed_first)
     }
 
     fn apply_loaded(&mut self, req: ReqId, page: Page<User>) {
@@ -26,6 +26,8 @@ impl UserList {
         self.pending = None;
         self.load = LoadState::Idle;
         self.loaded_once = true;
+        self.stale = false;
+        self.generation = self.generation.wrapping_add(1);
     }
 
     fn apply_failed(&mut self, req: ReqId, code: String) -> bool {
@@ -66,7 +68,8 @@ impl App {
 
     /// Only the Safety tab has data to fetch.
     pub(super) fn settings_entry(&mut self) -> Vec<Effect> {
-        if self.settings.tab != SettingsTab::Safety {
+        if self.settings.tab != SettingsTab::Safety || !matches!(self.session, Session::SignedIn(_))
+        {
             return Vec::new();
         }
         let mut effects = Vec::new();
@@ -83,11 +86,14 @@ impl App {
             return Vec::new();
         }
         self.settings.tab = tab;
+        self.settings.lane_cursor = None;
+        self.settings.hex_input = None;
         self.settings_entry()
     }
 
     pub(super) fn settings_refresh(&mut self) -> Vec<Effect> {
-        if self.settings.tab != SettingsTab::Safety {
+        if self.settings.tab != SettingsTab::Safety || !matches!(self.session, Session::SignedIn(_))
+        {
             return Vec::new();
         }
         vec![

@@ -176,7 +176,12 @@ fn draw_settings(app: &App, frame: &mut Frame, inner: Rect) {
         height: inner.height.saturating_sub(3),
         ..inner
     };
-    for (row, line) in body.rows().zip(settings::rows(app, body.width)) {
+    let scroll = match app.settings().tab {
+        SettingsTab::Safety => usize::from(app.settings().safety_scroll),
+        _ => 0,
+    };
+    let lines = settings::rows(app, body.width).into_iter().skip(scroll);
+    for (row, line) in body.rows().zip(lines) {
         frame.render_widget(Paragraph::new(line), row);
     }
 }

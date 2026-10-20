@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::{App, Me, SettingsTab, Theme};
 use crate::feed::LoadState;
 use crate::model::{Lane, Rgb, User};
-use crate::settings::UserList;
+use crate::settings::{ProfileRow, UserList, parse_hex_color, saved_lane_choice};
 use crate::timefmt::relative;
 use crate::ui::card::clean_inline;
 use crate::ui::feed::{plain, retry_hint, truncate};
@@ -17,7 +17,14 @@ const COLOR_NAMES: [&str; 6] = ["orange", "green", "violet", "teal", "rose", "oc
 /// Rows below the tab row and its underline; each is at most `width - 1` wide.
 pub fn rows(app: &App, width: u16) -> Vec<Line<'static>> {
     let limit = usize::from(width).saturating_sub(1);
-    match app.settings().tab {
+    let tab = app.settings().tab;
+    if tab != SettingsTab::Appearance && matches!(app.session(), crate::app::Session::Guest) {
+        return vec![plain(
+            " Sign in to change these settings. [L] Sign in",
+            limit,
+        )];
+    }
+    match tab {
         SettingsTab::Profile => profile(app, limit),
         SettingsTab::Appearance => appearance(app, limit),
         SettingsTab::Safety => safety(app, limit),
@@ -61,7 +68,29 @@ fn radio(on: bool) -> &'static str {
     if on { "(•) " } else { "( ) " }
 }
 
-fn radios(me: &Me, truecolor: bool) -> Vec<Vec<Span<'static>>> {
+/// Replaces the first column of a line by the mark of the focused row.
+fn marked(text: &str, on: bool) -> String {
+    if on {
+        format!("▌{}", text.chars().skip(1).collect::<String>())
+    } else {
+        text.to_string()
+    }
+}
+
+/// The lane that the choice under the cursor would give; a color that is not typed in full changes nothing.
+fn cursor_lane(me: &Me, cursor: Option<usize>, typed: Option<&str>) -> Lane {
+    match cursor {
+        None => me.lane,
+        Some(0) => Lane::Index(me.automatic_lane),
+        Some(n @ 1..=6) => Lane::Index(n as u8 - 1),
+        Some(_) => typed
+            .and_then(parse_hex_color)
+            .map(Lane::Custom)
+            .unwrap_or(me.lane),
+    }
+}
+
+fn radios(me: &Me, truecolor: bool, typed: Option<&str>) -> Vec<Vec<Span<'static>>> {
     let auto = COLOR_NAMES[usize::from(me.automatic_lane).min(5)];
     let mut items = vec![vec![Span::raw(format!(
         "{}Auto ({auto})",
@@ -78,10 +107,13 @@ fn radios(me: &Me, truecolor: bool) -> Vec<Vec<Span<'static>>> {
             Span::raw(format!(" {name}")),
         ]);
     }
-    let custom = match me.preferred_lane {
-        Some(Lane::Custom(rgb)) => (true, hex(rgb)),
-        _ => (false, "#______".to_string()),
+    let saved_custom = matches!(me.preferred_lane, Some(Lane::Custom(_)));
+    let shown = match (typed, me.preferred_lane) {
+        (Some(digits), _) => format!("#{digits}{}", "_".repeat(6 - digits.len().min(6))),
+        (None, Some(Lane::Custom(rgb))) => hex(rgb),
+        (None, _) => "#______".to_string(),
     };
+    let custom = (saved_custom, shown);
     items.push(vec![Span::raw(format!(
         "{}custom {}",
         radio(custom.0),
@@ -116,29 +148,50 @@ fn profile(app: &App, limit: usize) -> Vec<Line<'static>> {
         Some(t) => synced_text(t, app),
         None => "never synced".to_string(),
     };
+    let state = app.settings();
+    let row = state.profile_row;
+    let typed = state.hex_input.as_deref();
     let mirrored = format!(" Profile mirrored from GitHub   ({synced})");
     let mut out = Vec::new();
     if mirrored.width() + "   [S] Sync".width() <= limit {
-        out.push(plain(&format!("{mirrored}   [S] Sync"), limit));
+        out.push(plain(
+            &marked(&format!("{mirrored}   [S] Sync"), row == ProfileRow::Sync),
+            limit,
+        ));
     } else {
-        out.push(plain(&mirrored, limit));
+        out.push(plain(&marked(&mirrored, row == ProfileRow::Sync), limit));
         out.push(plain("  [S] Sync", limit));
     }
     out.push(Line::raw(""));
-    out.push(plain(" Lane color", limit));
+    out.push(plain(
+        &marked(" Lane color", row == ProfileRow::Lane),
+        limit,
+    ));
 
+    let cursor = state
+        .lane_cursor
+        .unwrap_or_else(|| saved_lane_choice(me.preferred_lane));
     let mut current: Vec<Span<'static>> = Vec::new();
-    for item in radios(me, app.prefs().truecolor) {
+    for (i, item) in radios(me, app.prefs().truecolor, typed)
+        .into_iter()
+        .enumerate()
+    {
         let joined = spans_width(&current) + 2 + spans_width(&item);
         if !current.is_empty() && joined > limit {
             out.push(fit(std::mem::take(&mut current), limit));
         }
-        current.push(Span::raw("  "));
+        let gap = if row == ProfileRow::Lane && i == cursor {
+            " ▌"
+        } else {
+            "  "
+        };
+        current.push(Span::raw(gap));
         current.extend(item);
     }
     out.push(fit(current, limit));
 
-    let lane_style = Style::new().fg(theme::lane_color(me.lane, app.prefs().truecolor));
+    let shown = cursor_lane(me, state.lane_cursor, typed);
+    let lane_style = Style::new().fg(theme::lane_color(shown, app.prefs().truecolor));
     out.push(fit(
         vec![
             Span::raw("  preview:  "),
@@ -148,12 +201,19 @@ fn profile(app: &App, limit: usize) -> Vec<Line<'static>> {
         limit,
     ));
     out.push(Line::raw(""));
-    out.push(pair(" Pasteis mode", on_off(me.pasteis_mode), limit));
+    out.push(pair(
+        &marked(" Pasteis mode", row == ProfileRow::Pasteis),
+        on_off(me.pasteis_mode),
+        limit,
+    ));
     // Why not `pasteis_resets_at`: the plan fixes the reset time as plain text.
     out.push(plain("  10 per day, resets 00:00 UTC", limit));
     out.push(Line::raw(""));
     out.push(plain(" Danger zone", limit));
-    out.push(plain("  [D] Delete account", limit));
+    out.push(plain(
+        &marked("  [D] Delete account", row == ProfileRow::Delete),
+        limit,
+    ));
     out
 }
 
@@ -180,13 +240,18 @@ fn appearance(app: &App, limit: usize) -> Vec<Line<'static>> {
 
 // --- Safety -----------------------------------------------------------------
 
-fn user_row(user: &User, button: &str, limit: usize) -> Line<'static> {
+fn user_row(user: &User, button: &str, limit: usize, selected: Option<Style>) -> Line<'static> {
     let name = clean_inline(user.name.as_deref().unwrap_or(&user.username));
-    pair(
-        &format!("  ◉ {name} @{}", clean_inline(&user.username)),
+    let mark = if selected.is_some() { '▌' } else { ' ' };
+    let line = pair(
+        &format!("{mark} ◉ {name} @{}", clean_inline(&user.username)),
         button,
         limit,
-    )
+    );
+    match selected {
+        Some(style) => line.style(style),
+        None => line,
+    }
 }
 
 fn section(
@@ -196,6 +261,7 @@ fn section(
     button: &str,
     empty: &str,
     limit: usize,
+    selected: Option<(usize, Style)>,
 ) {
     out.push(plain(heading, limit));
     if list.users.is_empty() {
@@ -208,7 +274,10 @@ fn section(
         }
         return;
     }
-    out.extend(list.users.iter().map(|u| user_row(u, button, limit)));
+    out.extend(list.users.iter().enumerate().map(|(i, u)| {
+        let style = selected.filter(|(at, _)| *at == i).map(|(_, s)| s);
+        user_row(u, button, limit, style)
+    }));
     if list.next_cursor.is_some() {
         out.push(plain(" ┊ more not shown", limit));
     }
@@ -216,23 +285,28 @@ fn section(
 
 fn safety(app: &App, limit: usize) -> Vec<Line<'static>> {
     let state = app.settings();
+    let cursor = Style::new().bg(theme::cursor_bg(app.prefs().truecolor));
+    let muted_len = state.muted.users.len();
+    let at = state.safety_selected;
     let mut out = Vec::new();
     section(
         &mut out,
         " Muted",
         &state.muted,
-        "[m] Unmute",
-        "  nobody muted",
+        "[u] Unmute",
+        "  No muted users.",
         limit,
+        (at < muted_len).then_some((at, cursor)),
     );
     out.push(Line::raw(""));
     section(
         &mut out,
         " Blocked",
         &state.blocked,
-        "[B] Unblock",
-        "  nobody blocked",
+        "[u] Unblock",
+        "  No blocked users.",
         limit,
+        (at >= muted_len).then(|| (at - muted_len, cursor)),
     );
     out
 }

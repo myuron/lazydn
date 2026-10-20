@@ -726,3 +726,76 @@ fn delete_and_report_go_to_the_executor_with_the_client_in_force() {
         .collect();
     assert_eq!(*rig.spawned.borrow(), expected);
 }
+
+// --- account deletion leaves the local files alone -------------------------------------------------
+
+#[test]
+fn deleting_the_account_returns_to_a_guest_and_keeps_the_key_the_drafts_and_the_state_on_disk() {
+    use crate::keymap::SettingsText;
+    let tmp = tempfile::tempdir().unwrap();
+    let mut store = super::run::FileStore {
+        dir: tmp.path().to_path_buf(),
+    };
+    store.save_drafts(ACCOUNT, &drafts_with("kept")).unwrap();
+    std::fs::write(tmp.path().join("id_ed25519"), "key").unwrap();
+    std::fs::write(
+        tmp.path().join("state.toml"),
+        "[heads]\nfollowing = \"c1\"\n",
+    )
+    .unwrap();
+    let listing = |dir: &std::path::Path| {
+        let mut names: Vec<(String, Vec<u8>)> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| {
+                let path = e.unwrap().path();
+                (
+                    path.file_name().unwrap().to_string_lossy().into_owned(),
+                    std::fs::read(&path).unwrap(),
+                )
+            })
+            .collect();
+        names.sort();
+        names
+    };
+    let before = listing(tmp.path());
+    assert_eq!(before.len(), 3);
+
+    let spawned = Shared::default();
+    let mut runtime = Runtime {
+        app: crate::app::App::new(
+            crate::app::Session::SignedIn(account_me()),
+            NOW,
+            time::UtcOffset::UTC,
+        ),
+        client: ClientKind::Signed,
+        exec: FakeExec(spawned.clone()),
+        launcher: FakeLauncher(Shared::default()),
+        clipboard: FakeClipboard {
+            copied: Shared::default(),
+            answer: Ok(()),
+        },
+        store,
+        base_url: BASE.into(),
+    };
+    runtime.handle(Action::Resize(120, 40));
+    runtime.handle(Action::Goto(crate::app::Screen::Settings));
+    runtime.handle(Action::OpenAccountDelete);
+    for c in "myuron".chars() {
+        runtime.handle(Action::SettingsText(SettingsText::Insert(c)));
+    }
+    runtime.handle(Action::SettingsText(SettingsText::Submit));
+    let req = spawned
+        .borrow()
+        .iter()
+        .find_map(|(_, e)| match e {
+            Effect::DeleteAccount { req } => Some(*req),
+            _ => None,
+        })
+        .expect("the deletion was not sent");
+
+    runtime.handle(Action::AccountDeleted { req });
+
+    assert_eq!(runtime.app.session(), &crate::app::Session::Guest);
+    assert_eq!(runtime.client, ClientKind::Guest);
+    assert_eq!(listing(tmp.path()), before);
+}

@@ -4,7 +4,9 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use crate::dialogs::{DETAILS_MAX, DeleteConfirm, MoreMenu, REASONS, ReportFocus, ReportState};
+use crate::dialogs::{
+    AccountDelete, DETAILS_MAX, DeleteConfirm, MoreMenu, REASONS, ReportFocus, ReportState,
+};
 use crate::editor::wrap;
 use crate::ui::card::clean_inline;
 use crate::ui::centered;
@@ -74,6 +76,39 @@ pub fn render_block_confirm(username: &str, frame: &mut Frame) {
     ];
     let rect = centered(frame.area(), BLOCK_WIDTH, 8);
     frame_of(frame, rect, " Block user ".to_string(), rows);
+}
+
+const ACCOUNT_WIDTH: u16 = 50;
+
+/// `username` is the one the field has to match before the delete hint appears.
+pub fn render_account_delete(dialog: &AccountDelete, username: &str, frame: &mut Frame) {
+    let name = clean_inline(username);
+    let footer = if dialog.sending {
+        "deleting…   [Esc] Close"
+    } else if dialog.input == username {
+        "[Enter] Delete   [Esc] Cancel"
+    } else {
+        "[Esc] Cancel"
+    };
+    let rows = vec![
+        String::new(),
+        " Delete your account and every device?".to_string(),
+        " This cannot be undone. Your key file is kept.".to_string(),
+        String::new(),
+        format!(" Type {name} to confirm:"),
+        format!(" > {}", clean_inline(&dialog.input)),
+        String::new(),
+        centered_text(footer, usize::from(ACCOUNT_WIDTH) - 2),
+        String::new(),
+    ];
+    let height = u16::try_from(rows.len() + 2).unwrap_or(u16::MAX);
+    let rect = centered(frame.area(), ACCOUNT_WIDTH, height);
+    frame_of(frame, rect, " Delete account ".to_string(), rows);
+    let typed = u16::try_from(clean_inline(&dialog.input).width()).unwrap_or(0);
+    let x = rect.x + 4 + typed;
+    if x < rect.x + rect.width {
+        frame.set_cursor_position((x, rect.y + 6));
+    }
 }
 
 pub fn render_report(report: &ReportState, frame: &mut Frame) {
