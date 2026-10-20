@@ -1,9 +1,6 @@
-use ratatui::layout::Rect;
-
 use super::{App, Screen, Session};
 use crate::action::Effect;
-use crate::feed::{LoadState, ReqId, ensure_visible};
-use crate::layout::LayoutMode;
+use crate::feed::{LoadState, ReqId, settle_scroll};
 use crate::model::ThreadItem;
 use crate::thread::{Entry, ReplyList, item_id, item_replies};
 
@@ -212,14 +209,12 @@ impl App {
         };
         let count = state.entries(id, guest).len();
         let selected = state.selected.min(count.saturating_sub(1));
-        if self.layout_mode() == LayoutMode::TooSmall {
+        let Some(main) = self.main_area() else {
             if let Some(state) = self.threads.get_mut(id) {
                 state.selected = selected;
             }
             return;
-        }
-        let (w, h) = self.size;
-        let main = crate::ui::layout::split(Rect::new(0, 0, w, h), self.layout_mode()).main;
+        };
         let view = main.height.saturating_sub(2) as usize;
         let scroll = usize::from(state.scroll);
         let rows = crate::ui::thread::rows(self, id, main.width.saturating_sub(2));
@@ -230,11 +225,10 @@ impl App {
                     Some(next) => next.start - span.start,
                     None => rows.lines.len() - span.start,
                 };
-                ensure_visible(span.start, height, scroll, view)
+                settle_scroll((span.start, height), rows.lines.len(), scroll, view)
             }
             _ => 0,
         };
-        let wanted = wanted.min(rows.lines.len().saturating_sub(view));
         if let Some(state) = self.threads.get_mut(id) {
             state.selected = selected;
             state.scroll = wanted.min(u16::MAX as usize) as u16;

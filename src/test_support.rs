@@ -3,6 +3,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 
+use crate::model::Lane;
 use time::macros::datetime;
 use time::{OffsetDateTime, UtcOffset};
 
@@ -17,6 +18,7 @@ pub const NOW: OffsetDateTime = datetime!(2026-10-20 12:00 UTC);
 /// Fixed account shown in the Aside and the Nav badge of every signed-in test.
 pub fn fixture_me() -> Me {
     Me {
+        id: "user-myuron".into(),
         name: "myuron".into(),
         handle: "myuron".into(),
         commits: 42,
@@ -27,6 +29,12 @@ pub fn fixture_me() -> Me {
         bio: "Rust / TUI enjoyer".into(),
         unread: 12,
         pasteis_mode: true,
+        lane: Lane::Index(1),
+        preferred_lane: None,
+        automatic_lane: 1,
+        pasteis_resets_at: datetime!(2026-10-21 00:00 UTC),
+        pasteis_received: 3,
+        github_synced_at: Some(datetime!(2026-10-20 10:00 UTC)),
     }
 }
 

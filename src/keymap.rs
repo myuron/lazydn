@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crate::action::Action;
 use crate::app::{App, ConnTab, LogTab, Modal, Pane, ProfileTab, Screen, Session};
 use crate::layout::LayoutMode;
+use crate::notifications::Filter;
 
 pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if key.kind != KeyEventKind::Press {
@@ -34,6 +35,7 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
                 | Screen::Thread(_)
                 | Screen::Profile(_)
                 | Screen::Connections(..)
+                | Screen::Notifications
         );
     if app.g_pending() {
         if list && key.code == KeyCode::Char('g') {
@@ -81,6 +83,14 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             }
             (Screen::Profile(_), KeyCode::Char('4')) => {
                 return Some(Action::OpenConnections(ConnTab::Following));
+            }
+            (Screen::Notifications, KeyCode::Char(c @ '1'..='6')) => {
+                return Some(Action::ToggleFilter(
+                    Filter::ALL[usize::from(c as u8 - b'1')],
+                ));
+            }
+            (Screen::Notifications, KeyCode::Char('a')) => {
+                return Some(Action::ToggleAllFilters);
             }
             (Screen::Connections(..), KeyCode::Char('1')) => {
                 return Some(Action::SwitchConnTab(ConnTab::Followers));

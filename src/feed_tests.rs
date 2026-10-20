@@ -101,6 +101,9 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::FetchUser { .. }
         | Effect::FetchUserCommits { .. }
         | Effect::FetchConnections { .. }
+        | Effect::FetchMe { .. }
+        | Effect::FetchNotifications { .. }
+        | Effect::FetchNotificationGroup { .. }
         | Effect::Quit => None,
     }
 }
@@ -263,7 +266,12 @@ fn enter_on_saved_opens_the_thread() {
 fn init_requests_the_first_following_page_when_signed_in() {
     let (app, effects) = started(120, 40);
     assert_eq!(log_fetches(&effects, LogTab::Following), vec![None]);
-    assert_eq!(effects.len(), 1);
+    // The current-user request may ride along, but nothing else may.
+    let others = effects
+        .iter()
+        .filter(|e| !matches!(e, Effect::FetchMe { .. }))
+        .count();
+    assert_eq!(others, 1);
     assert_eq!(loading(&app, FOLLOWING), Some(false));
 }
 

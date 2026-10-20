@@ -1,10 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::feed::{LoadState, ReqId};
+use crate::feed::{LoadState, ReqId, near_end};
 use crate::model::{Commit, ThreadItem};
-
-/// Items before the end of the first level at which the next page is requested.
-const PREFETCH_MARGIN: usize = 5;
 
 /// One page-able list of replies under a single parent.
 #[derive(Debug, Clone, Default)]
@@ -212,8 +209,7 @@ impl ThreadState {
     pub fn wants_prefetch(&self, thread: &str, top: usize) -> Option<String> {
         let list = self.children.get(thread)?;
         let len = self.first_level_len(thread);
-        let near_end = top + PREFETCH_MARGIN >= len.saturating_sub(1);
-        (near_end && list.pending.is_none() && !list.append_failed())
+        (near_end(top, len) && list.pending.is_none() && !list.append_failed())
             .then(|| list.next_cursor.clone())
             .flatten()
     }

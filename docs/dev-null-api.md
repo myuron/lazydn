@@ -297,7 +297,7 @@ commit に star を付ける、または外します。
 | `type` | `all`、`none`、または `replies`、`quotes`、`stars`、`mentions`、`follows`、`moderation` のカンマ区切り。指定した値は Cookie に保存され、省略したときに使われます |
 | `through` | 日時。指定した時点までの通知を返します |
 
-- **呼ぶと、フィルターにかかわらず全通知が既読になります。** トップレベルの `read_at` に既読にした時刻が入るので、各通知の `read_at` がそれより前のものが今回の新着です。
+- **呼ぶと、フィルターにかかわらず全通知が既読になります。** トップレベルの `read_at` には、既読にした時刻が入ります。応答の各通知の `read_at` は既読にした後の値です。そのため、`read_at` が null か、トップレベルの `read_at` 以上のものが今回の新着になります（Web 版の `isNewSince` と同じ規則）。一覧の `unread_count` は既読にした後に数えるので、常に 0 です。
 - トップレベルに `filters.type` も付きます。
 
 #### `GET /v1/notifications/{id}/group`

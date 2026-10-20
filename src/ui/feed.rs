@@ -18,6 +18,17 @@ pub struct CardSpan {
     pub height: usize,
 }
 
+/// Start and height of card `index`; the last card owns the closing rows (loading, error, root), so they scroll into view too.
+pub fn card_extent(cards: &[CardSpan], index: usize, lines: usize) -> Option<(usize, usize)> {
+    let card = cards.get(index)?;
+    let height = if index + 1 == cards.len() {
+        lines - card.start
+    } else {
+        card.height
+    };
+    Some((card.start, height))
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct FeedRows {
     pub lines: Vec<Line<'static>>,
@@ -63,7 +74,7 @@ pub(crate) fn plain(text: &str, width: usize) -> Line<'static> {
     Line::raw(truncate(text, width))
 }
 
-fn center_offset(text: &str, width: usize) -> usize {
+pub(crate) fn center_offset(text: &str, width: usize) -> usize {
     width.saturating_sub(text.width()) / 2
 }
 
@@ -75,7 +86,7 @@ fn centered(text: &str, width: usize) -> Line<'static> {
 }
 
 /// A rule that stops one column short of the edge, which stays free like the cards' right margin.
-fn rule(head: &str, fill: &str, width: usize) -> Line<'static> {
+pub(crate) fn rule(head: &str, fill: &str, width: usize) -> Line<'static> {
     let limit = width.saturating_sub(1);
     let fill_len = limit.saturating_sub(head.width());
     plain(&format!("{head}{}", fill.repeat(fill_len)), limit)

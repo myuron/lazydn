@@ -1,13 +1,15 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::text::Span;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
 use crate::app::{App, ConnTab, LogTab, Pane, Screen, Session};
 use crate::feed::FeedKey;
 use crate::model::User;
-use crate::ui::feed::rows;
+use crate::ui::card::apply_selection;
+use crate::ui::feed::{render_ctx, rows};
+use crate::ui::notifications::{filter_rows, rows as notification_rows};
 use crate::ui::profile::display_name;
 use crate::ui::theme;
 use crate::ui::thread::rows as thread_rows;
@@ -93,6 +95,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     match app.screen() {
         Screen::Log(tab) => render_log(app, frame, inner, tab),
         Screen::Saved => draw_list(app, frame, inner, FeedKey::Saved),
+        Screen::Notifications => draw_notifications(app, frame, inner),
         Screen::Thread(id) => draw_thread(app, frame, inner, &id),
         Screen::Profile(name) => draw_profile(app, frame, inner, &name),
         Screen::Connections(name, tab) => draw_connections(app, frame, inner, &name, tab),
@@ -152,6 +155,30 @@ fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
         && let Some(row) = screen_rows.get(3)
     {
         frame.render_widget(Paragraph::new(" sign in to see the log  [L] Sign in"), *row);
+    }
+}
+
+/// The filter rows stay put; only the list below them scrolls.
+fn draw_notifications(app: &App, frame: &mut Frame, inner: Rect) {
+    let all: Vec<Rect> = inner.rows().collect();
+    let fixed = filter_rows(&app.notifications().filters, inner.width);
+    for (row, line) in all.iter().zip(&fixed) {
+        frame.render_widget(Paragraph::new(line.clone()), *row);
+    }
+    let scroll = usize::from(app.notifications().scroll);
+    let view = notification_rows(app, inner.width);
+    let mut visible: Vec<Line<'static>> = view.lines.into_iter().skip(scroll).collect();
+    // Marked here, not in rows(), because the row tests compare unselected text.
+    if let Some(card) = view.cards.get(app.notifications().selected) {
+        let from = card.start.saturating_sub(scroll).min(visible.len());
+        let to = (card.start + card.height)
+            .saturating_sub(scroll)
+            .min(visible.len());
+        let width = inner.width.saturating_sub(1);
+        apply_selection(&mut visible[from..to], &render_ctx(app), width);
+    }
+    for (row, line) in all.iter().skip(fixed.len()).zip(visible) {
+        frame.render_widget(Paragraph::new(line), *row);
     }
 }
 

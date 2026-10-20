@@ -2,7 +2,10 @@ use time::OffsetDateTime;
 
 use crate::app::{ConnTab, LogTab, ProfileTab, Screen};
 use crate::feed::{FeedKey, FeedPage, ReqId};
-use crate::model::{Page, ThreadItem, ThreadResponse, User, UserResponse};
+use crate::model::{
+    GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User, UserResponse,
+};
+use crate::notifications::Filter;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -109,6 +112,38 @@ pub enum Action {
         req: ReqId,
         code: String,
     },
+    MeLoaded {
+        req: ReqId,
+        response: Box<MeResponse>,
+    },
+    /// `code` is an API error code or `http_<status>`.
+    MeFailed {
+        req: ReqId,
+        code: String,
+    },
+    NotificationsLoaded {
+        req: ReqId,
+        page: Box<NotificationsPage>,
+    },
+    NotificationsFailed {
+        req: ReqId,
+        code: String,
+    },
+    /// `id` is the id of the notification that was asked, not a `group_id`.
+    GroupLoaded {
+        id: String,
+        req: ReqId,
+        page: GroupPage,
+    },
+    GroupFailed {
+        id: String,
+        req: ReqId,
+        code: String,
+    },
+    /// `1`..`6` on Notifications.
+    ToggleFilter(Filter),
+    /// `a` on Notifications.
+    ToggleAllFilters,
     /// `@`: opens the profile of the selected card's author.
     OpenAuthor,
     /// `3` / `4` on a profile; pushes onto the history.
@@ -159,6 +194,23 @@ pub enum Effect {
     FetchConnections {
         username: String,
         tab: ConnTab,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchMe {
+        req: ReqId,
+    },
+    /// Marks every notification read on the server, so it must only follow an explicit user step.
+    /// `types` is `all`, `none` or a comma list.
+    FetchNotifications {
+        types: String,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    /// `id` is the id of one notification in the group; this call does not mark anything read.
+    FetchNotificationGroup {
+        id: String,
+        types: String,
         cursor: Option<String>,
         req: ReqId,
     },

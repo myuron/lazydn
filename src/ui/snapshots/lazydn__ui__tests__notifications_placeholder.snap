@@ -3,9 +3,9 @@ source: src/ui/tests.rs
 expression: terminal.backend()
 ---
 "┌ /dev/null ───────┐┏ Notifications ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
-"│ a social network │┃ Notifications (not implemented yet)                              ┃│ ◉ myuron                     │"
-"│ for devs         │┃                                                                  ┃│ ● @myuron                    │"
-"│                  │┃                                                                  ┃│                              │"
+"│ a social network │┃ [x] Replies  [x] Quotes  [x] Stars  [x] Mentions  [x] Follows    ┃│ ◉ myuron                     │"
+"│ for devs         │┃ [x] Moderation                          (1-6 toggle, a all/none) ┃│ ● @myuron                    │"
+"│                  │┃ ┊ (loading...)                                                   ┃│                              │"
 "│ ◉ Log            │┃                                                                  ┃│ 42 commits                   │"
 "│▌◎ Notifications  │┃                                                                  ┃│ 10 following  12 followers   │"
 "│                12│┃                                                                  ┃│ ◓ 7/10 pasteis left          │"

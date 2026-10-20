@@ -84,7 +84,7 @@ type Chars = Vec<(String, Style)>;
 // --- text primitives --------------------------------------------------------
 
 /// Drops control and bidi-override characters so server text cannot inject escapes or reorder a line.
-fn clean(s: &str) -> String {
+pub(crate) fn clean(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -99,7 +99,7 @@ fn clean(s: &str) -> String {
 }
 
 /// For fields that must stay on one row; a newline would break the rail.
-fn clean_inline(s: &str) -> String {
+pub(crate) fn clean_inline(s: &str) -> String {
     clean(s).replace('\n', " ")
 }
 

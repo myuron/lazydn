@@ -1,0 +1,28 @@
+---
+source: src/ui/notifications_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ Log ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃      Following               Latest               Trending       ┃│ ◉ Mira Lee                   │"
+"│ for devs         │┃      ━━━━━━━━━                                                   ┃│ ● @mira                      │"
+"│                  │┃ ┆                                                                ┃│                              │"
+"│▌◉ Log            │┃ ◌  What did you ship?                                            ┃│ 120 commits                  │"
+"│ ◎ Notifications  │┃ ┆                                    [c] Write a commit          ┃│ 3 following  45 followers    │"
+"│                 5│┃ ┆                                                                ┃│ ◓ 4/10 pasteis left          │"
+"│ ◯ Profile        │┃ ┊ (loading...)                                                   ┃│                              │"
+"│ ⊡ Saved          │┃                                                                  ┃│ Terminal tinkerer            │"
+"│ ⚙ Settings       │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃┌ Keys ────────────────────────┐"
+"│ [ c  Commit ]    │┃                                                                  ┃│ j/k  move     ↵  open        │"
+"│                  │┃                                                                  ┃│ c    commit   r  reply       │"
+"│                  │┃                                                                  ┃│ s    star     o  replies     │"
+"│                  │┃                                                                  ┃│ ?    all keys                │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│ @mira            │┃                                                                  ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Log > Following  j/k move  ↵ open  c commit  Tab pane  ? help                                    API -/-  ○ connecting "

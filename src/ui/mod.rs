@@ -5,6 +5,7 @@ pub mod feed;
 pub mod help;
 pub mod layout;
 pub mod nav;
+pub mod notifications;
 pub mod profile;
 pub mod screens;
 pub mod signin;
@@ -56,6 +57,8 @@ pub fn draw(app: &App, frame: &mut Frame) {
 mod card_tests;
 #[cfg(test)]
 mod feed_tests;
+#[cfg(test)]
+mod notifications_tests;
 #[cfg(test)]
 mod profile_tests;
 #[cfg(test)]

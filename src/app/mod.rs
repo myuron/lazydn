@@ -3,17 +3,21 @@ use std::collections::HashMap;
 use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
+mod notifications;
 mod profile;
 mod thread;
 
 use crate::action::{Action, Effect};
-use crate::feed::{Feed, FeedKey, LoadState, ReqId, ensure_visible};
+use crate::feed::{Feed, FeedKey, LoadState, ReqId, settle_scroll};
 use crate::layout::LayoutMode;
+use crate::model::Lane;
+use crate::notifications::NotificationsState;
 use crate::profile::{ConnectionsState, ProfileState};
 use crate::thread::ThreadState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Me {
+    pub id: String,
     pub name: String,
     pub handle: String,
     pub commits: u32,
@@ -24,6 +28,13 @@ pub struct Me {
     pub bio: String,
     pub unread: u32,
     pub pasteis_mode: bool,
+    /// The lane in effect, which is the automatic one when none is chosen.
+    pub lane: Lane,
+    pub preferred_lane: Option<Lane>,
+    pub automatic_lane: u8,
+    pub pasteis_resets_at: OffsetDateTime,
+    pub pasteis_received: u32,
+    pub github_synced_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +156,12 @@ pub struct App {
     /// Keyed by the lowercased username.
     profiles: HashMap<String, ProfileState>,
     connections: HashMap<(String, ConnTab), ConnectionsState>,
+    notifications: NotificationsState,
+    /// The request whose answer may still arrive; none are stacked.
+    me_pending: Option<ReqId>,
+    last_me_fetch: Option<OffsetDateTime>,
+    /// The latest FetchNotifications, prefetches included, since each one marks everything read.
+    last_notif_req: Option<ReqId>,
     now: OffsetDateTime,
     local_offset: UtcOffset,
     prefs: Prefs,
@@ -175,6 +192,10 @@ impl App {
             threads: HashMap::new(),
             profiles: HashMap::new(),
             connections: HashMap::new(),
+            notifications: NotificationsState::default(),
+            me_pending: None,
+            last_me_fetch: None,
+            last_notif_req: None,
             now,
             local_offset,
             prefs: Prefs::default(),
@@ -188,12 +209,15 @@ impl App {
         match action {
             Action::Quit => return vec![Effect::Quit],
             Action::Resize(w, h) => self.size = (w, h),
-            Action::Init => effects.extend(self.entry_fetch()),
+            Action::Init => {
+                effects.extend(self.request_me());
+                effects.extend(self.entry_fetch());
+            }
             Action::Open(screen) => effects.extend(self.open(screen)),
             Action::Goto(screen) => {
                 self.g_pending = false;
                 self.goto(screen);
-                effects.extend(self.entry_fetch());
+                effects.extend(self.enter_fetch());
             }
             Action::Back => {
                 if let Some(previous) = self.history.pop() {
@@ -237,7 +261,7 @@ impl App {
                 if self.goto(target) {
                     self.focus = Pane::Main;
                 }
-                effects.extend(self.entry_fetch());
+                effects.extend(self.enter_fetch());
             }
             Action::SwitchTab(tab) => {
                 if matches!(self.screen, Screen::Log(_)) {
@@ -255,6 +279,7 @@ impl App {
             }
             Action::Tick(now) => {
                 self.now = now;
+                effects.extend(self.poll_me());
                 effects.extend(self.poll());
             }
             Action::FeedLoaded { key, req, page } => {
@@ -279,6 +304,31 @@ impl App {
                 effects.extend(self.select(0));
             }
             Action::SelectLast => effects.extend(self.select(usize::MAX)),
+            Action::OpenSelected if self.on_notifications() => {
+                effects.extend(self.notif_open_selected());
+            }
+            Action::ToggleReplies if self.on_notifications() => {
+                effects.extend(self.notif_toggle_group());
+            }
+            Action::OpenAuthor if self.on_notifications() => {
+                effects.extend(self.notif_open_author());
+            }
+            Action::ToggleFilter(filter) => effects.extend(self.notif_toggle_filter(filter)),
+            Action::ToggleAllFilters => effects.extend(self.notif_toggle_all_filters()),
+            Action::MeLoaded { req, response } => self.apply_me_loaded(req, &response),
+            Action::MeFailed { req, .. } => {
+                if self.me_pending == Some(req) {
+                    self.me_pending = None;
+                }
+            }
+            Action::NotificationsLoaded { req, page } => {
+                effects.extend(self.apply_notifications_loaded(req, *page));
+            }
+            Action::NotificationsFailed { req, code } => {
+                self.apply_notifications_failed(req, code);
+            }
+            Action::GroupLoaded { id, req, page } => self.apply_group_loaded(&id, req, page),
+            Action::GroupFailed { id, req, code } => self.apply_group_failed(&id, req, code),
             Action::OpenSelected if self.thread_id().is_some() => {
                 effects.extend(self.thread_open_selected());
             }
@@ -459,6 +509,15 @@ impl App {
         self.sync_cursor();
     }
 
+    /// None while the terminal is too small, since no row can be placed then.
+    fn main_area(&self) -> Option<Rect> {
+        if self.layout_mode() == LayoutMode::TooSmall {
+            return None;
+        }
+        let (w, h) = self.size;
+        Some(crate::ui::layout::split(Rect::new(0, 0, w, h), self.layout_mode()).main)
+    }
+
     fn sync_cursor(&mut self) {
         if let Some(item) = self.nav_item() {
             self.nav_cursor = item;
@@ -487,6 +546,10 @@ impl App {
 
     pub fn connections(&self, username: &str, tab: ConnTab) -> Option<&ConnectionsState> {
         self.connections.get(&(username.to_ascii_lowercase(), tab))
+    }
+
+    pub fn notifications(&self) -> &NotificationsState {
+        &self.notifications
     }
 
     pub fn now(&self) -> OffsetDateTime {
@@ -548,7 +611,7 @@ impl App {
         }
         self.history.push(self.screen.clone());
         self.show(screen);
-        self.entry_fetch()
+        self.enter_fetch()
     }
 
     fn current_key(&self) -> Option<FeedKey> {
@@ -617,6 +680,9 @@ impl App {
             }
             return self.thread_requests(&id);
         }
+        if self.on_notifications() {
+            return vec![self.request_notifications(None, false)];
+        }
         let Some(key) = self.fetchable_key() else {
             return Vec::new();
         };
@@ -635,6 +701,9 @@ impl App {
     }
 
     fn select(&mut self, index: usize) -> Vec<Effect> {
+        if self.on_notifications() {
+            return self.notif_select(index);
+        }
         if let Some(name) = self.profile_name() {
             return self.profile_select(&name, index);
         }
@@ -652,6 +721,9 @@ impl App {
     }
 
     fn move_selection(&mut self, step: i32) -> Vec<Effect> {
+        if self.on_notifications() {
+            return self.notif_move(step);
+        }
         if let Some(name) = self.profile_name() {
             let current = self.profile(&name).map_or(0, |s| s.selected());
             return self.profile_select(&name, current.saturating_add_signed(step as isize));
@@ -693,6 +765,10 @@ impl App {
 
     /// Leaves the scroll alone when the size is unknown, since no row can be placed then.
     fn reconcile_scroll(&mut self) {
+        if self.on_notifications() {
+            self.reconcile_notifications_scroll();
+            return;
+        }
         if let Some(name) = self.profile_name() {
             self.reconcile_profile_scroll(&name);
             return;
@@ -708,11 +784,9 @@ impl App {
         let Some(key) = self.current_key() else {
             return;
         };
-        if self.layout_mode() == LayoutMode::TooSmall {
+        let Some(main) = self.main_area() else {
             return;
-        }
-        let (w, h) = self.size;
-        let main = crate::ui::layout::split(Rect::new(0, 0, w, h), self.layout_mode()).main;
+        };
         let tabs = if matches!(key, FeedKey::Log(_)) { 2 } else { 0 };
         let view = main.height.saturating_sub(2 + tabs) as usize;
         let feed = &self.feeds[&key];
@@ -720,20 +794,11 @@ impl App {
             0
         } else {
             let rows = crate::ui::feed::rows(feed, key, self, main.width.saturating_sub(2));
-            let wanted = match rows.cards.get(feed.selected) {
-                Some(card) => {
-                    // The last card owns the closing rows (loading, error, root), so they scroll into view too.
-                    let height = if feed.selected + 1 == rows.cards.len() {
-                        rows.lines.len() - card.start
-                    } else {
-                        card.height
-                    };
-                    ensure_visible(card.start, height, feed.scroll as usize, view)
-                }
-                None => feed.scroll as usize,
-            };
-            // Shrinking content or a taller view must not leave blank rows below the list.
-            wanted.min(rows.lines.len().saturating_sub(view))
+            let total = rows.lines.len();
+            match crate::ui::feed::card_extent(&rows.cards, feed.selected, total) {
+                Some(extent) => settle_scroll(extent, total, feed.scroll as usize, view),
+                None => (feed.scroll as usize).min(total.saturating_sub(view)),
+            }
         };
         self.feeds.entry(key).or_default().scroll = scroll.min(u16::MAX as usize) as u16;
     }

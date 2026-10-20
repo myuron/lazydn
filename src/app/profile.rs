@@ -1,15 +1,10 @@
-use ratatui::layout::Rect;
-
 use super::{App, ConnTab, NavItem, ProfileTab, Screen, Session};
 use crate::action::Effect;
-use crate::feed::{FeedPage, LoadState, Pending, ReqId, ensure_visible};
-use crate::layout::LayoutMode;
+use crate::feed::{FeedPage, LoadState, Pending, ReqId, near_end, settle_scroll};
 use crate::model::{Page, ThreadItem, User, UserResponse};
 use crate::profile::ConnectionsState;
 use crate::thread::Entry;
 
-/// Rows after which the next page is requested.
-const PREFETCH_MARGIN: usize = 5;
 /// Rows above the connection list that do not scroll: tabs, underline and a blank row.
 const CONN_FIXED_ROWS: u16 = 3;
 
@@ -201,7 +196,7 @@ impl App {
         let feed = state.feed_mut(tab);
         feed.selected = selected;
         let relative = selected.saturating_sub(offset);
-        let near_end = relative + PREFETCH_MARGIN >= feed.items.len().saturating_sub(1);
+        let near_end = near_end(relative, feed.items.len());
         let append_failed = matches!(feed.load, LoadState::Failed { append: true, .. });
         if near_end
             && feed.pending.is_none()
@@ -396,7 +391,7 @@ impl App {
             return Vec::new();
         }
         state.selected = index.min(state.users.len() - 1);
-        let near_end = state.selected + PREFETCH_MARGIN >= state.users.len() - 1;
+        let near_end = near_end(state.selected, state.users.len());
         let append_failed = matches!(state.load, LoadState::Failed { append: true, .. });
         if near_end
             && state.pending.is_none()
@@ -451,14 +446,6 @@ impl App {
 
     // --- scrolling ----------------------------------------------------------
 
-    fn main_area(&self) -> Option<Rect> {
-        if self.layout_mode() == LayoutMode::TooSmall {
-            return None;
-        }
-        let (w, h) = self.size;
-        Some(crate::ui::layout::split(Rect::new(0, 0, w, h), self.layout_mode()).main)
-    }
-
     pub(super) fn reconcile_profile_scroll(&mut self, name: &str) {
         let Some(main) = self.main_area() else {
             return;
@@ -471,19 +458,11 @@ impl App {
         let scroll = usize::from(state.scroll());
         let view = main.height.saturating_sub(2) as usize;
         let rows = crate::ui::profile::rows(self, name, main.width.saturating_sub(2));
-        let wanted = match rows.cards.get(selected) {
-            Some(card) if selected > 0 => {
-                // The last card owns the closing rows (loading, error, root), so they scroll into view too.
-                let height = if selected + 1 == rows.cards.len() {
-                    rows.lines.len() - card.start
-                } else {
-                    card.height
-                };
-                ensure_visible(card.start, height, scroll, view)
-            }
+        let total = rows.lines.len();
+        let wanted = match crate::ui::feed::card_extent(&rows.cards, selected, total) {
+            Some(extent) if selected > 0 => settle_scroll(extent, total, scroll, view),
             _ => 0,
         };
-        let wanted = wanted.min(rows.lines.len().saturating_sub(view));
         if let Some(state) = self.profiles.get_mut(&name.to_ascii_lowercase()) {
             state.feed_mut(tab).scroll = wanted.min(usize::from(u16::MAX)) as u16;
         }
@@ -500,18 +479,11 @@ impl App {
         let scroll = usize::from(state.scroll);
         let view = main.height.saturating_sub(2 + CONN_FIXED_ROWS) as usize;
         let rows = crate::ui::connections::rows(self, name, tab, main.width.saturating_sub(2));
-        let wanted = match rows.users.get(selected) {
-            Some(user) if selected > 0 => {
-                let height = if selected + 1 == rows.users.len() {
-                    rows.lines.len() - user.start
-                } else {
-                    user.height
-                };
-                ensure_visible(user.start, height, scroll, view)
-            }
+        let total = rows.lines.len();
+        let wanted = match crate::ui::feed::card_extent(&rows.users, selected, total) {
+            Some(extent) if selected > 0 => settle_scroll(extent, total, scroll, view),
             _ => 0,
         };
-        let wanted = wanted.min(rows.lines.len().saturating_sub(view));
         if let Some(state) = self.connections.get_mut(&(name.to_ascii_lowercase(), tab)) {
             state.scroll = wanted.min(usize::from(u16::MAX)) as u16;
         }

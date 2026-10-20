@@ -90,7 +90,7 @@ pub struct Feed {
 /// Seconds between two polls of the same feed.
 const POLL_INTERVAL_SECS: i64 = 30;
 /// Items before the end at which the next page is requested.
-const PREFETCH_MARGIN: usize = 5;
+pub const PREFETCH_MARGIN: usize = 5;
 
 impl Feed {
     /// Loading is derived from `pending` so that the two can never disagree.
@@ -121,8 +121,7 @@ impl Feed {
     }
 
     pub fn prefetch_cursor(&self) -> Option<String> {
-        let near_end =
-            !self.items.is_empty() && self.selected + PREFETCH_MARGIN >= self.items.len() - 1;
+        let near_end = !self.items.is_empty() && near_end(self.selected, self.items.len());
         let append_failed = matches!(self.load, LoadState::Failed { append: true, .. });
         if near_end && self.pending.is_none() && !append_failed {
             self.next_cursor.clone()
@@ -202,6 +201,16 @@ impl Feed {
             self.expanded.insert(id);
         }
     }
+}
+
+/// True when `position` is within the prefetch margin of the last of `len` items.
+pub fn near_end(position: usize, len: usize) -> bool {
+    position + PREFETCH_MARGIN >= len.saturating_sub(1)
+}
+
+/// Scrolls just enough to show `extent` (start, height), without leaving blank rows below the list.
+pub fn settle_scroll(extent: (usize, usize), lines: usize, scroll: usize, view: usize) -> usize {
+    ensure_visible(extent.0, extent.1, scroll, view).min(lines.saturating_sub(view))
 }
 
 /// Returns the scroll offset that shows the card at `top..top + height` in a view of `view` rows.

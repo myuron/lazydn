@@ -413,17 +413,17 @@ Nav の Notifications（`g n`）で開きます。Web 版の `/notifications` �
 ┃ [x] Moderation                          (1-6 toggle, a all/none) ┃
 ┃                      ↑ 2 new notifications                       ┃
 ┃ ╎ ── Today ───────────────────────────────────────────────────── ┃
-┃ ◉ ★  Bob, Carol and 3 others starred your commit         2m      ┃
+┃ ◉ ★  Bob and 4 others starred your commit                2m      ┃
 ┃ │    ┌──────────────────────────────────────────────┐            ┃
 ┃ │    │ shipped a terminal client for /dev/null ...  │            ┃
 ┃ │    └──────────────────────────────────────────────┘            ┃
 ┃ │    ⌄ 5 stars                                                   ┃
-┃ ◉ ↩  Dave replied                                        5m      ┃
+┃ ◉ ↩  Dave @dave replied to your commit                   5m      ┃
 ┃ │    sounds great, ship it                                       ┃
-┃ ◉ +  Erin and Frank followed you                         1h      ┃
+┃ ◉ +  Erin and 1 other followed you                       1h      ┃
 ┃ ╌╌ HEAD@{last visit} ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ┃
-┃ ○ ✓  Your commit was approved                            3h      ┃
-┃ ○ ✗  Your commit was rejected                            1d      ┃
+┃ ○ ✓  Your commit was approved.                           3h      ┃
+┃ ○ ✗  Your commit was rejected.                           1d      ┃
 ┃ │    reason: spam                                                ┃
 ┃ ┊                                                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -433,8 +433,8 @@ Nav の Notifications（`g n`）で開きます。Web 版の `/notifications` �
 | --- | --- |
 | フィルター | `1`〜`6` で、Replies / Quotes / Stars / Mentions / Follows / Moderation をそれぞれオン・オフします。`a` を押すと、全部オンと全部オフを切り替えます |
 | 新着の通知 | 30 秒ごとに `GET /v1/me` の `unread_notifications_count` を調べ、1 件以上あれば `↑ N new notifications` を表示します |
-| グループ行 | star と follow はまとめて、`Bob, Carol and 3 others starred your commit` のように 1 行で表示します。`o` で展開すると、個々の通知を表示します |
-| 新着の印 | 応答のトップレベルの `read_at` より前の通知を新着とみなし、ノードを `◉`（primary 色）で表示します。既読のものは `○` です |
+| グループ行 | `event_count` が 2 以上の通知は 1 行にまとめ、`o` で展開すると個々の通知を表示します。複数人の表記（`Bob and 4 others starred your commit`）は star と follow だけで、ほかの種類は `Dave @dave replied to your commit` のように最新の 1 人を出します |
+| 新着の印 | `read_at` が null か、応答のトップレベルの `read_at` 以上の通知を新着とみなし、ノードを `◉`（primary 色）で表示します。既読のものは `○` です |
 
 - **注意**: `GET /v1/notifications` を呼ぶと、すべての通知が既読になります。そのため、この画面を開いたときと、ユーザーが明示的に読み込んだとき（`R` または新着の通知）だけに呼びます。バッジの更新には `GET /v1/me` を使います。
 - **通知がないとき**: `$ cat /dev/notifications | grep -E 'replies|stars'` と表示します。Web 版と同じ文言です。
