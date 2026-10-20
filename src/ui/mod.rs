@@ -8,6 +8,7 @@ pub mod screens;
 pub mod signin;
 pub mod statusline;
 pub mod theme;
+pub mod thread;
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -55,3 +56,5 @@ mod card_tests;
 mod feed_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod thread_tests;

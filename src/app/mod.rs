@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use ratatui::layout::Rect;
 use time::{OffsetDateTime, UtcOffset};
 
+mod thread;
+
 use crate::action::{Action, Effect};
-use crate::feed::{Feed, FeedKey, ReqId, ensure_visible};
+use crate::feed::{Feed, FeedKey, LoadState, ReqId, ensure_visible};
 use crate::layout::LayoutMode;
+use crate::thread::ThreadState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Me {
@@ -120,6 +123,7 @@ pub struct App {
     g_pending: bool,
     size: (u16, u16),
     feeds: HashMap<FeedKey, Feed>,
+    threads: HashMap<String, ThreadState>,
     now: OffsetDateTime,
     local_offset: UtcOffset,
     prefs: Prefs,
@@ -147,6 +151,7 @@ impl App {
                 .into_iter()
                 .map(|k| (k, Feed::default()))
                 .collect(),
+            threads: HashMap::new(),
             now,
             local_offset,
             prefs: Prefs::default(),
@@ -170,6 +175,7 @@ impl App {
             Action::Back => {
                 if let Some(previous) = self.history.pop() {
                     self.show(previous);
+                    self.drop_unreachable_threads();
                     effects.extend(self.entry_fetch());
                 }
             }
@@ -249,6 +255,12 @@ impl App {
                 effects.extend(self.select(0));
             }
             Action::SelectLast => effects.extend(self.select(usize::MAX)),
+            Action::OpenSelected if self.thread_id().is_some() => {
+                effects.extend(self.thread_open_selected());
+            }
+            Action::ToggleReplies if self.thread_id().is_some() => {
+                effects.extend(self.thread_toggle());
+            }
             Action::OpenSelected => {
                 let id = self
                     .current_feed()
@@ -264,6 +276,54 @@ impl App {
                 }
             }
             Action::Refresh => effects.extend(self.refresh()),
+            Action::ThreadLoaded { id, req, response } => {
+                if let Some(state) = self.threads.get_mut(&id)
+                    && state.main_pending == Some(req)
+                {
+                    let response = *response;
+                    state.main = Some(response.data);
+                    state.ancestors = response.ancestors;
+                    state.main_pending = None;
+                    state.main_load = LoadState::Idle;
+                    state.selected = state.ancestors.len();
+                    state.scroll = 0;
+                }
+            }
+            Action::ThreadFailed { id, req, code } => {
+                if let Some(state) = self.threads.get_mut(&id)
+                    && state.main_pending == Some(req)
+                {
+                    state.main_pending = None;
+                    state.main_load = LoadState::Failed {
+                        code,
+                        append: false,
+                    };
+                }
+            }
+            Action::RepliesLoaded {
+                thread,
+                parent,
+                req,
+                page,
+            } => {
+                let kept = self.selected_entry(&thread);
+                if let Some(list) = self.reply_list_mut(&thread, &parent) {
+                    list.apply_loaded(req, page.data, page.meta.next_cursor);
+                }
+                self.restore_selection(&thread, kept);
+            }
+            Action::RepliesFailed {
+                thread,
+                parent,
+                req,
+                code,
+            } => {
+                let kept = self.selected_entry(&thread);
+                if let Some(list) = self.reply_list_mut(&thread, &parent) {
+                    list.apply_failed(req, &code);
+                }
+                self.restore_selection(&thread, kept);
+            }
         }
         self.reconcile_scroll();
         effects
@@ -303,6 +363,8 @@ impl App {
             return false;
         }
         self.history.clear();
+        // No history entry can lead back to a thread now, so its state would only go stale.
+        self.threads.clear();
         self.show(screen);
         if let Some(feed) = self.current_key().map(|k| self.feeds.entry(k).or_default()) {
             feed.selected = 0;
@@ -339,6 +401,10 @@ impl App {
 
     pub fn feed(&self, key: FeedKey) -> &Feed {
         &self.feeds[&key]
+    }
+
+    pub fn thread(&self, id: &str) -> Option<&ThreadState> {
+        self.threads.get(id)
     }
 
     pub fn now(&self) -> OffsetDateTime {
@@ -432,6 +498,12 @@ impl App {
     }
 
     fn entry_fetch(&mut self) -> Vec<Effect> {
+        if let Some(id) = self.thread_id() {
+            if self.threads.contains_key(&id) {
+                return Vec::new();
+            }
+            return self.thread_requests(&id);
+        }
         match self.fetchable_key() {
             Some(key) if self.feeds[&key].needs_entry_fetch() => {
                 vec![self.request(key, None, false)]
@@ -441,6 +513,13 @@ impl App {
     }
 
     fn refresh(&mut self) -> Vec<Effect> {
+        if let Some(id) = self.thread_id() {
+            if let Some(state) = self.threads.get_mut(&id) {
+                state.children.clear();
+                state.expanded.clear();
+            }
+            return self.thread_requests(&id);
+        }
         let Some(key) = self.fetchable_key() else {
             return Vec::new();
         };
@@ -459,6 +538,9 @@ impl App {
     }
 
     fn select(&mut self, index: usize) -> Vec<Effect> {
+        if let Some(id) = self.thread_id() {
+            return self.thread_select(&id, index);
+        }
         let Some(key) = self.current_key() else {
             return Vec::new();
         };
@@ -467,6 +549,10 @@ impl App {
     }
 
     fn move_selection(&mut self, step: i32) -> Vec<Effect> {
+        if let Some(id) = self.thread_id() {
+            let current = self.threads.get(&id).map_or(0, |t| t.selected);
+            return self.thread_select(&id, current.saturating_add_signed(step as isize));
+        }
         let Some(key) = self.current_key() else {
             return Vec::new();
         };
@@ -496,6 +582,10 @@ impl App {
 
     /// Leaves the scroll alone when the size is unknown, since no row can be placed then.
     fn reconcile_scroll(&mut self) {
+        if let Some(id) = self.thread_id() {
+            self.reconcile_thread_scroll(&id);
+            return;
+        }
         let Some(key) = self.current_key() else {
             return;
         };

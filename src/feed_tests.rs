@@ -95,7 +95,10 @@ pub(crate) fn started(w: u16, h: u16) -> (App, Vec<Effect>) {
 fn req_of(effect: &Effect) -> Option<ReqId> {
     match effect {
         Effect::FetchLog { req, .. } | Effect::FetchSaved { req, .. } => Some(*req),
-        Effect::PollLog { .. } | Effect::Quit => None,
+        Effect::PollLog { .. }
+        | Effect::FetchThread { .. }
+        | Effect::FetchReplies { .. }
+        | Effect::Quit => None,
     }
 }
 

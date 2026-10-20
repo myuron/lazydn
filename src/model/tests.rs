@@ -424,3 +424,28 @@ fn t08_effective_lane_uses_own_lane_or_falls_back_to_auto_lane() {
     let without: User = parse_value(user_json(json!({ "id": "a" })));
     assert_eq!(without.effective_lane(), Lane::Index(1));
 }
+
+// 9. parent
+
+#[test]
+fn t09_parent_is_a_thread_item_when_present_and_none_otherwise() {
+    let with_commit: Commit = parse_value(commit_json(json!({
+        "parent": commit_json(json!({ "id": "p1" }))
+    })));
+    assert!(matches!(
+        with_commit.parent.as_deref(),
+        Some(ThreadItem::Commit(c)) if c.id == "p1"
+    ));
+
+    let with_tombstone: Commit = parse_value(commit_json(json!({
+        "parent": { "id": "p2", "parent_id": null,
+                    "deleted_at": "2026-10-20T11:00:00Z", "replies_count": 0 }
+    })));
+    assert!(matches!(
+        with_tombstone.parent.as_deref(),
+        Some(ThreadItem::Tombstone(t)) if t.id == "p2"
+    ));
+
+    let without: Commit = parse_value(commit_json(json!({ "parent": null })));
+    assert_eq!(without.parent, None);
+}

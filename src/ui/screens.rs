@@ -8,12 +8,20 @@ use crate::app::{App, LogTab, Pane, Screen, Session};
 use crate::feed::FeedKey;
 use crate::ui::feed::rows;
 use crate::ui::theme;
+use crate::ui::thread::rows as thread_rows;
 
 pub fn tab_label(tab: LogTab) -> &'static str {
     match tab {
         LogTab::Following => "Following",
         LogTab::Latest => "Latest",
         LogTab::Trending => "Trending",
+    }
+}
+
+fn title(screen: &Screen) -> &'static str {
+    match screen {
+        Screen::Thread(_) => "← Commit",
+        other => screen_name(other),
     }
 }
 
@@ -51,13 +59,14 @@ fn thirds(row: Rect) -> [Rect; 3] {
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let block = Block::bordered()
         .border_type(theme::border_type(app.focus() == Pane::Main))
-        .title(format!(" {} ", screen_name(&app.screen())));
+        .title(format!(" {} ", title(&app.screen())));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     match app.screen() {
         Screen::Log(tab) => render_log(app, frame, inner, tab),
         Screen::Saved => draw_list(app, frame, inner, FeedKey::Saved),
+        Screen::Thread(id) => draw_thread(app, frame, inner, &id),
         other => frame.render_widget(
             Paragraph::new(format!(" {} (not implemented yet)", screen_name(&other))),
             inner,
@@ -114,6 +123,18 @@ fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
         && let Some(row) = screen_rows.get(3)
     {
         frame.render_widget(Paragraph::new(" sign in to see the log  [L] Sign in"), *row);
+    }
+}
+
+fn draw_thread(app: &App, frame: &mut Frame, area: Rect, id: &str) {
+    let scroll = app.thread(id).map_or(0, |t| usize::from(t.scroll));
+    let visible = thread_rows(app, id, area.width)
+        .lines
+        .into_iter()
+        .skip(scroll)
+        .take(usize::from(area.height));
+    for (row, line) in area.rows().zip(visible) {
+        frame.render_widget(Paragraph::new(line), row);
     }
 }
 

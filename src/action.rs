@@ -2,6 +2,7 @@ use time::OffsetDateTime;
 
 use crate::app::{LogTab, Screen};
 use crate::feed::{FeedKey, FeedPage, ReqId};
+use crate::model::{Page, ThreadItem, ThreadResponse};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -48,6 +49,30 @@ pub enum Action {
     OpenSelected,
     ToggleReplies,
     Refresh,
+    ThreadLoaded {
+        id: String,
+        req: ReqId,
+        response: Box<ThreadResponse>,
+    },
+    /// `code` is an API error code or `http_<status>`.
+    ThreadFailed {
+        id: String,
+        req: ReqId,
+        code: String,
+    },
+    /// `parent == thread` for the first level of replies.
+    RepliesLoaded {
+        thread: String,
+        parent: String,
+        req: ReqId,
+        page: Page<ThreadItem>,
+    },
+    RepliesFailed {
+        thread: String,
+        parent: String,
+        req: ReqId,
+        code: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,5 +90,16 @@ pub enum Effect {
     PollLog {
         tab: LogTab,
         since: String,
+    },
+    FetchThread {
+        id: String,
+        req: ReqId,
+    },
+    /// `parent == thread` asks for the first level of replies.
+    FetchReplies {
+        thread: String,
+        parent: String,
+        cursor: Option<String>,
+        req: ReqId,
     },
 }

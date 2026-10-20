@@ -26,7 +26,11 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if key.code == KeyCode::Char('Q') {
         return Some(Action::Quit);
     }
-    let list = app.focus() == Pane::Main && matches!(app.screen(), Screen::Log(_) | Screen::Saved);
+    let list = app.focus() == Pane::Main
+        && matches!(
+            app.screen(),
+            Screen::Log(_) | Screen::Saved | Screen::Thread(_)
+        );
     if app.g_pending() {
         if list && key.code == KeyCode::Char('g') {
             return Some(Action::SelectFirst);

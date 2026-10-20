@@ -1,0 +1,28 @@
+---
+source: src/ui/thread_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ ← Commit ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃ fatal: commit a1b2c3d is not available                           ┃│ ◉ myuron                     │"
+"│ for devs         │┃                                                                  ┃│ ● @myuron                    │"
+"│                  │┃                                                                  ┃│                              │"
+"│ ◉ Log            │┃                                                                  ┃│ 42 commits                   │"
+"│ ◎ Notifications  │┃                                                                  ┃│ 10 following  12 followers   │"
+"│                12│┃                                                                  ┃│ ◓ 7/10 pasteis left          │"
+"│ ◯ Profile        │┃                                                                  ┃│                              │"
+"│ ⊡ Saved          │┃                                                                  ┃│ Rust / TUI enjoyer           │"
+"│ ⚙ Settings       │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃┌ Keys ────────────────────────┐"
+"│ [ c  Commit ]    │┃                                                                  ┃│ j/k  move     ↵  open        │"
+"│                  │┃                                                                  ┃│ c    commit   r  reply       │"
+"│                  │┃                                                                  ┃│ s    star     o  replies     │"
+"│                  │┃                                                                  ┃│ ?    all keys                │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│ @myuron          │┃                                                                  ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Commit a1b2c3d  j/k move  ↵ open  c commit  Tab pane  ? help                                     API -/-  ○ connecting "

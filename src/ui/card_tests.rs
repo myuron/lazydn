@@ -787,6 +787,8 @@ fn busy_opts(variant: Variant, node: Node) -> CardOptions {
         is_own: true,
         replies_expanded: true,
         replying_to: Some("日本語🥵".into()),
+        quotes_parent: false,
+        has_children: false,
         has_draft: true,
     }
 }
@@ -1751,4 +1753,186 @@ fn t15_tiny_width_never_overflows_even_with_the_ellipsis() {
             assert!(line.width() <= usize::from(w), "{w}: {line:?}");
         }
     }
+}
+
+// --- 13. empty bodies and the quote marker ----------------------------------
+
+#[test]
+fn t13_reply_preview_with_an_empty_body_draws_no_blank_row() {
+    let empty = reply_json("bob", "Bob", 3, "", 1);
+    let c = with_replies(vec![empty, carol()], 2, None);
+    let t = card_text(&c, &expanded(), &ctx(), W);
+    assert_eq!(
+        rows_from(&t, 3),
+        [
+            l("├─● Bob @bob · 1m"),
+            l("└─● Carol @carol · 2m"),
+            l("      Third reply"),
+        ]
+    );
+}
+
+#[test]
+fn t13_quote_with_an_empty_body_draws_a_box_without_body_rows() {
+    let t = card_text(
+        &commit(json!({"quoted_commit": quoted_json("")})),
+        &opts(),
+        &ctx(),
+        W,
+    );
+    let mut want = vec![l("Hello")];
+    want.extend(solid_box(Some("❝ Bob @bob · 2h"), &[]));
+    assert_eq!(middle(&t), want);
+}
+
+#[test]
+fn t13_quote_marker_precedes_the_body() {
+    let o = CardOptions {
+        quotes_parent: true,
+        ..opts()
+    };
+    let t = card_text(&commit(json!({})), &o, &ctx(), W);
+    assert_eq!(row(&t, 1), &l("❝ quoted this commit"));
+    assert_eq!(row(&t, 2), &l("Hello"));
+}
+
+#[test]
+fn t13_quote_marker_takes_the_place_of_replying_to() {
+    let o = CardOptions {
+        quotes_parent: true,
+        replying_to: Some("bob".into()),
+        ..opts()
+    };
+    let t = card_text(&commit(json!({})), &o, &ctx(), W);
+    assert_eq!(row(&t, 1), &l("❝ quoted this commit"));
+    assert!(t.iter().all(|s| !s.contains("replying to")), "{t:#?}");
+}
+
+#[test]
+fn t13_ascii_quote_marker_uses_a_straight_quote() {
+    let o = CardOptions {
+        quotes_parent: true,
+        ..opts()
+    };
+    let t = card_text(&commit(json!({})), &o, &ascii_ctx(), W);
+    assert_eq!(row(&t, 1), &la("\" quoted this commit"));
+}
+
+// --- 16. reply variant ------------------------------------------------------
+
+fn reply_opts() -> CardOptions {
+    CardOptions {
+        variant: Variant::Reply,
+        ..opts()
+    }
+}
+
+fn branch(first: &str, rest: &str) -> Prefix {
+    Prefix {
+        first: vec![Span::raw(first.to_string())],
+        rest: vec![Span::raw(rest.to_string())],
+    }
+}
+
+fn reply_text(c: &Commit, o: &CardOptions, p: &Prefix) -> Vec<String> {
+    texts(&card_lines(CardInput::Commit(c), o, &ctx(), W, p))
+}
+
+#[test]
+fn t16_reply_has_a_dot_node_no_hash_an_indented_body_and_minimal_actions() {
+    let t = reply_text(&commit(json!({})), &reply_opts(), &branch("├─", "│ "));
+    assert_eq!(
+        t,
+        vec![
+            " ├─● Alice @alice · 3m".to_string(),
+            " │     Hello".to_string(),
+            " │     ☆ 12  ↩ Reply".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn t16_last_reply_leaves_the_guide_column_blank() {
+    let t = reply_text(&commit(json!({})), &reply_opts(), &branch("└─", "  "));
+    assert_eq!(
+        t,
+        vec![
+            " └─● Alice @alice · 3m".to_string(),
+            "       Hello".to_string(),
+            "       ☆ 12  ↩ Reply".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn t16_reply_puts_replying_to_and_the_quote_marker_at_the_body_column() {
+    let o = CardOptions {
+        replying_to: Some("bob".into()),
+        ..reply_opts()
+    };
+    let t = reply_text(&commit(json!({})), &o, &branch("└─", "  "));
+    assert_eq!(row(&t, 1), "       ↳ replying to @bob");
+    let q = CardOptions {
+        quotes_parent: true,
+        ..reply_opts()
+    };
+    let t = reply_text(&commit(json!({})), &q, &branch("└─", "  "));
+    assert_eq!(row(&t, 1), "       ❝ quoted this commit");
+}
+
+#[test]
+fn t16_reply_never_shows_a_replies_count() {
+    let t = reply_text(
+        &commit(json!({"replies_count": 5})),
+        &reply_opts(),
+        &branch("├─", "│ "),
+    );
+    assert!(t.iter().all(|s| !s.contains("replies")), "{t:#?}");
+}
+
+#[test]
+fn t16_every_reply_line_fits_the_width() {
+    let c = commit(
+        json!({"body_segments": [text("a long reply body that has to wrap onto several lines at narrow widths")]}),
+    );
+    for w in [30u16, 40, 70] {
+        let t = texts(&card_lines(
+            CardInput::Commit(&c),
+            &reply_opts(),
+            &ctx(),
+            w,
+            &branch("│ ├─", "│ │ "),
+        ));
+        assert!(t.iter().all(|s| s.width() <= usize::from(w)), "{w}: {t:#?}");
+    }
+}
+
+#[test]
+fn t16_reply_with_children_draws_the_rail_in_the_node_column() {
+    let o = CardOptions {
+        has_children: true,
+        ..reply_opts()
+    };
+    let t = reply_text(&commit(json!({})), &o, &branch("├─", "│ "));
+    assert_eq!(
+        t,
+        vec![
+            " ├─● Alice @alice · 3m".to_string(),
+            " │ │   Hello".to_string(),
+            " │ │   ☆ 12  ↩ Reply".to_string(),
+        ]
+    );
+    let t = reply_text(&commit(json!({})), &o, &branch("└─", "  "));
+    assert_eq!(row(&t, 1), "   │   Hello");
+    assert_eq!(row(&t, 2), "   │   ☆ 12  ↩ Reply");
+}
+
+#[test]
+fn t16_reply_shows_the_draft_label_and_the_filled_star() {
+    let o = CardOptions {
+        has_draft: true,
+        ..reply_opts()
+    };
+    let t = reply_text(&commit(json!({"starred": true})), &o, &branch("├─", "│ "));
+    assert_eq!(row(&t, 2), " │     ★ 12  ↩ stash@{0}");
 }

@@ -33,6 +33,10 @@ pub enum Variant {
     #[default]
     List,
     ThreadMain,
+    /// A nested reply in a thread: no hash, body indented under the node, minimal actions.
+    Reply,
+    /// The author's follow-up under the thread's main commit: header and body only.
+    Continuation,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -50,6 +54,10 @@ pub struct CardOptions {
     pub is_own: bool,
     pub replies_expanded: bool,
     pub replying_to: Option<String>,
+    /// Shows the "quoted this commit" marker where a reply would show `replying_to`.
+    pub quotes_parent: bool,
+    /// Draws the rail in the node column of a reply whose children follow below it.
+    pub has_children: bool,
     pub has_draft: bool,
 }
 
@@ -403,12 +411,6 @@ impl<'a> Frame<'a> {
         let rail = g(self.ctx, "│", "|");
         self.push_with(rail, self.rail, row);
     }
-
-    fn push_all(&mut self, rows: Vec<Row>) {
-        for r in rows {
-            self.push(r);
-        }
-    }
 }
 
 // --- entry points -----------------------------------------------------------
@@ -553,7 +555,7 @@ fn header_row(c: &Commit, opts: &CardOptions, ctx: &RenderCtx, cw: usize) -> Row
         (true, Some(Status::Rejected)) => Some("rejected"),
         _ => None,
     };
-    if thread_main {
+    if thread_main || matches!(opts.variant, Variant::Reply | Variant::Continuation) {
         return header_left(
             ctx,
             &c.author,
@@ -616,38 +618,76 @@ fn commit_card(
 ) -> Vec<Line<'static>> {
     let lane = lane_style(&c.author, ctx);
     let mut f = Frame::new(ctx, prefix, width, lane);
-    let cw = f.cw;
     let thread_main = opts.variant == Variant::ThreadMain;
+    let reply = opts.variant == Variant::Reply;
+    // A reply's body sits four columns right of its node, so its content is two columns narrower.
+    let cw = if reply { f.cw.saturating_sub(2) } else { f.cw };
 
-    let node = match opts.node {
-        Node::Normal => g(ctx, "◉", "o"),
-        Node::SameAuthor => g(ctx, "•", "*"),
+    let node = match (opts.variant, opts.node) {
+        (Variant::Reply, _) => g(ctx, "●", "o"),
+        (_, Node::Normal) => g(ctx, "◉", "o"),
+        (_, Node::SameAuthor) => g(ctx, "•", "*"),
     };
-    f.push_with(node, lane, header_row(c, opts, ctx, cw));
+    let header_w = f.cw;
+    f.push_with(node, lane, header_row(c, opts, ctx, header_w));
 
-    if let Some(who) = &opts.replying_to {
+    // The rail under a reply's node only continues when its children follow.
+    let rail_sym = if opts.has_children {
+        g(ctx, "│", "|")
+    } else {
+        " "
+    };
+    let put = |f: &mut Frame, row: Row| {
+        if reply {
+            let mut indented = vec![spaces(2)];
+            indented.extend(row);
+            f.push_with(rail_sym, lane, indented);
+        } else {
+            f.push(row);
+        }
+    };
+
+    if opts.quotes_parent {
+        put(
+            &mut f,
+            plain(&format!("{} quoted this commit", g(ctx, "❝", "\""))),
+        );
+    } else if let Some(who) = &opts.replying_to {
         let arrow = g(ctx, "↳", ">");
-        f.push(plain(&format!(
-            "{arrow} replying to @{}",
-            clean_inline(who)
-        )));
+        put(
+            &mut f,
+            plain(&format!("{arrow} replying to @{}", clean_inline(who))),
+        );
     }
 
     let (rows, show_more) = body_rows(c, opts.variant, ctx, cw);
-    f.push_all(rows);
+    for r in rows {
+        put(&mut f, r);
+    }
     if show_more {
-        f.push(plain("Show more"));
+        put(&mut f, plain("Show more"));
+    }
+    if opts.variant == Variant::Continuation {
+        return f.lines;
     }
 
-    f.push_all(image_rows(c, cw));
-    if let Some(poll) = &c.poll {
-        f.push_all(poll_rows(poll, ctx));
+    for r in image_rows(c, cw) {
+        put(&mut f, r);
     }
-    f.push_all(quote_rows(&c.quoted_commit, ctx, cw));
+    if let Some(poll) = &c.poll {
+        for r in poll_rows(poll, ctx) {
+            put(&mut f, r);
+        }
+    }
+    for r in quote_rows(&c.quoted_commit, ctx, cw) {
+        put(&mut f, r);
+    }
     if let Some(lp) = &c.link_preview
         && !lp.is_pending
     {
-        f.push_all(link_rows(lp, ctx, cw));
+        for r in link_rows(lp, ctx, cw) {
+            put(&mut f, r);
+        }
     }
 
     if thread_main {
@@ -659,7 +699,9 @@ fn commit_card(
         )));
     }
 
-    f.push_all(action_rows(c, opts, ctx, cw));
+    for r in action_rows(c, opts, ctx, cw) {
+        put(&mut f, r);
+    }
 
     if opts.replies_expanded {
         reply_preview(c, ctx, &mut f);
@@ -820,6 +862,20 @@ fn text_box(ctx: &RenderCtx, cw: usize, text: &str) -> Vec<Row> {
     framed(ctx, true, cw, None, body, dim())
 }
 
+/// An empty body yields no rows, since wrapping it would still draw one blank row.
+fn excerpt(text: &str, max_rows: usize, width: usize, ctx: &RenderCtx) -> Vec<Row> {
+    let text = clean(text);
+    if text.is_empty() {
+        return Vec::new();
+    }
+    limit_rows(
+        wrap(&chars_of(&text, Style::default()), width),
+        max_rows,
+        width,
+        ctx,
+    )
+}
+
 fn quote_rows(q: &Quoted, ctx: &RenderCtx, cw: usize) -> Vec<Row> {
     match q {
         Quoted::NotLoaded => Vec::new(),
@@ -838,8 +894,7 @@ fn quote_rows(q: &Quoted, ctx: &RenderCtx, cw: usize) -> Vec<Row> {
                     cw.saturating_sub(7),
                 ));
                 let inner = cw.saturating_sub(4);
-                let body = wrap(&chars_of(&clean(&qc.body), Style::default()), inner);
-                let body = limit_rows(body, 3, inner, ctx);
+                let body = excerpt(&qc.body, 3, inner, ctx);
                 framed(ctx, false, cw, Some(title), body, Style::default())
             }
         },
@@ -876,6 +931,9 @@ fn link_rows(lp: &LinkPreview, ctx: &RenderCtx, cw: usize) -> Vec<Row> {
 // --- actions and replies ----------------------------------------------------
 
 fn action_rows(c: &Commit, opts: &CardOptions, ctx: &RenderCtx, cw: usize) -> Vec<Row> {
+    if opts.variant == Variant::Reply {
+        return vec![reply_actions(c, opts, ctx)];
+    }
     let starred = c.starred.unwrap_or(false);
     let star_icon = if starred {
         g(ctx, "★", "*")
@@ -936,6 +994,30 @@ fn action_rows(c: &Commit, opts: &CardOptions, ctx: &RenderCtx, cw: usize) -> Ve
     lines
 }
 
+/// A reply only offers the star and the reply button, to keep a long thread quiet.
+fn reply_actions(c: &Commit, opts: &CardOptions, ctx: &RenderCtx) -> Row {
+    let starred = c.starred.unwrap_or(false);
+    let star_icon = if starred {
+        g(ctx, "★", "*")
+    } else {
+        g(ctx, "☆", "*")
+    };
+    let star_style = if starred {
+        theme::current_style()
+    } else {
+        Style::default()
+    };
+    let label = if opts.has_draft { "stash@{0}" } else { "Reply" };
+    vec![
+        Span::styled(
+            format!("{star_icon} {}", c.stars_count.unwrap_or(0)),
+            star_style,
+        ),
+        spaces(2),
+        Span::raw(format!("{} {label}", g(ctx, "↩", "<"))),
+    ]
+}
+
 fn reply_preview(c: &Commit, ctx: &RenderCtx, f: &mut Frame) {
     let Some(preview) = &c.reply_preview else {
         return;
@@ -966,9 +1048,7 @@ fn reply_preview(c: &Commit, ctx: &RenderCtx, f: &mut Frame) {
                     None,
                     cw.saturating_sub(4),
                 ));
-                let inner = cw.saturating_sub(6);
-                let rows = wrap(&chars_of(&clean(&rc.body), Style::default()), inner);
-                body = limit_rows(rows, 3, inner, ctx);
+                body = excerpt(&rc.body, 3, cw.saturating_sub(6), ctx);
             }
             ThreadItem::Tombstone(_) => {
                 head.push(Span::raw(" "));

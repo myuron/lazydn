@@ -188,4 +188,5 @@ pub struct Commit {
     pub quoted_commit: Quoted,
     pub poll: Option<Poll>,
     pub reply_preview: Option<ReplyPreview>,
+    pub parent: Option<Box<ThreadItem>>,
 }

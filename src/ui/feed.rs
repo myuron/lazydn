@@ -4,7 +4,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::{App, LogTab, Session};
 use crate::feed::{Feed, FeedKey, LoadState};
-use crate::model::Commit;
+use crate::model::{Commit, ThreadItem};
 use crate::timefmt::day_label;
 use crate::ui::card::{
     CardInput, CardOptions, Node, Prefix, RenderCtx, apply_selection, card_lines,
@@ -45,7 +45,7 @@ const HINT_COL_MAX: usize = 38;
 const HINT_COL_MIN: usize = 3;
 
 /// Cuts by display width because the fixed texts hold wide glyphs; no ellipsis, to keep rows plain.
-fn truncate(text: &str, width: usize) -> String {
+pub(crate) fn truncate(text: &str, width: usize) -> String {
     let mut used = 0;
     let mut out = String::new();
     for c in text.chars() {
@@ -59,7 +59,7 @@ fn truncate(text: &str, width: usize) -> String {
     out
 }
 
-fn plain(text: &str, width: usize) -> Line<'static> {
+pub(crate) fn plain(text: &str, width: usize) -> Line<'static> {
     Line::raw(truncate(text, width))
 }
 
@@ -149,6 +149,10 @@ impl Env<'_> {
             node,
             is_own: self.own == Some(commit.author.username.as_str()),
             replies_expanded,
+            replying_to: match commit.parent.as_deref() {
+                Some(ThreadItem::Commit(p)) => Some(p.author.username.clone()),
+                _ => None,
+            },
             ..CardOptions::default()
         };
         let mut card = card_lines(
