@@ -968,3 +968,858 @@ async fn a_connection_close_response_over_the_limit_is_refused() {
         "{err:?}"
     );
 }
+
+// ---- write endpoints ----
+
+const COMMIT: &str = include_str!("../../tests/fixtures/commit.json");
+
+fn commit_value() -> serde_json::Value {
+    serde_json::from_str::<serde_json::Value>(COMMIT).expect("fixture parses")["data"].clone()
+}
+
+fn the_commit() -> crate::model::Commit {
+    serde_json::from_value(commit_value()).expect("fixture commit parses")
+}
+
+fn the_user() -> crate::model::User {
+    let v = serde_json::from_str::<serde_json::Value>(USER).expect("fixture parses");
+    serde_json::from_value(v["data"].clone()).expect("fixture user parses")
+}
+
+fn no_content() -> ResponseTemplate {
+    ResponseTemplate::new(204)
+}
+
+fn body_of(req: &Request) -> serde_json::Value {
+    serde_json::from_slice(&req.body).expect("the request body is JSON")
+}
+
+fn content_type(req: &Request) -> Option<String> {
+    req.headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
+/// A signed JSON body: exact keys and values, a json Content-Type, and a verifiable signature.
+fn assert_signed_json(req: &Request, expected: serde_json::Value) {
+    assert_eq!(body_of(req), expected);
+    assert!(content_type(req).is_some_and(|v| v.starts_with("application/json")));
+    assert_eq!(verify_received(req), Ok(()));
+}
+
+/// A signed request with no body at all, and so no Content-Type either.
+fn assert_signed_bodiless(req: &Request) {
+    assert!(req.body.is_empty(), "no body expected");
+    assert_eq!(content_type(req), None);
+    assert_eq!(verify_received(req), Ok(()));
+}
+
+// create_commit
+
+#[tokio::test]
+async fn create_commit_sends_only_the_body_when_there_is_no_parent_or_quote() {
+    let server = MockServer::start().await;
+    let created =
+        ResponseTemplate::new(201).set_body_raw(COMMIT.as_bytes().to_vec(), "application/json");
+    serve(&server, "POST", "/api/v1/commits", created).await;
+
+    let result = signed(&server).create_commit("hello", None, None).await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(the_commit()));
+    assert_signed_json(
+        &only_request(&server).await,
+        serde_json::json!({"body": "hello"}),
+    );
+}
+
+#[tokio::test]
+async fn create_commit_as_a_reply_sends_parent_id() {
+    let server = MockServer::start().await;
+    let created =
+        ResponseTemplate::new(201).set_body_raw(COMMIT.as_bytes().to_vec(), "application/json");
+    serve(&server, "POST", "/api/v1/commits", created).await;
+
+    let result = signed(&server).create_commit("re", Some("p-1"), None).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_signed_json(
+        &only_request(&server).await,
+        serde_json::json!({"body": "re", "parent_id": "p-1"}),
+    );
+}
+
+#[tokio::test]
+async fn create_commit_as_a_quote_sends_quoted_commit_id() {
+    let server = MockServer::start().await;
+    let created =
+        ResponseTemplate::new(201).set_body_raw(COMMIT.as_bytes().to_vec(), "application/json");
+    serve(&server, "POST", "/api/v1/commits", created).await;
+
+    let result = signed(&server).create_commit("qt", None, Some("q-1")).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_signed_json(
+        &only_request(&server).await,
+        serde_json::json!({"body": "qt", "quoted_commit_id": "q-1"}),
+    );
+}
+
+#[tokio::test]
+async fn create_commit_with_both_parent_and_quote_is_refused_locally() {
+    let server = MockServer::start().await;
+
+    let result = signed(&server)
+        .create_commit("x", Some("p-1"), Some("q-1"))
+        .await;
+
+    assert_eq!(code_of(result), "invalid_argument");
+    assert!(received(&server).await.is_empty());
+}
+
+#[tokio::test]
+async fn create_commit_with_an_empty_body_is_refused_locally() {
+    let server = MockServer::start().await;
+
+    let result = signed(&server).create_commit("", None, None).await;
+
+    assert_eq!(code_of(result), "invalid_argument");
+    assert!(received(&server).await.is_empty());
+}
+
+#[tokio::test]
+async fn create_commit_leaves_text_and_length_to_the_server() {
+    let server = MockServer::start().await;
+    let created =
+        ResponseTemplate::new(201).set_body_raw(COMMIT.as_bytes().to_vec(), "application/json");
+    serve(&server, "POST", "/api/v1/commits", created).await;
+    let text = format!("a\n\n\n\n\u{3042}\"{}", "x".repeat(4000));
+
+    let result = signed(&server).create_commit(&text, None, None).await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(
+        body_of(&only_request(&server).await),
+        serde_json::json!({"body": text})
+    );
+}
+
+#[tokio::test]
+async fn create_commit_404_without_a_code_is_http_404() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits",
+        error_response(404, r#"{"message":"Not found."}"#),
+    )
+    .await;
+
+    let result = signed(&server)
+        .create_commit("re", Some("gone"), None)
+        .await;
+
+    assert_eq!(code_of(result), "http_404");
+}
+
+#[tokio::test]
+async fn create_commit_with_an_empty_parent_or_quote_id_is_refused_locally() {
+    let server = MockServer::start().await;
+    let client = signed(&server);
+
+    let parent = client.create_commit("x", Some(""), None).await;
+    let quote = client.create_commit("x", None, Some("")).await;
+
+    assert_eq!(code_of(parent), "invalid_argument");
+    assert_eq!(code_of(quote), "invalid_argument");
+    assert!(received(&server).await.is_empty());
+}
+
+#[tokio::test]
+async fn create_commit_rate_limit_reports_retry_after() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits",
+        error_response(429, r#"{"message":"Slow down","code":"rate_limited"}"#)
+            .insert_header("Retry-After", "30"),
+    )
+    .await;
+
+    let err = signed(&server)
+        .create_commit("x", None, None)
+        .await
+        .expect_err("429 fails");
+
+    assert_eq!(err.code(), "rate_limited");
+    assert!(matches!(
+        err.kind,
+        super::error::ErrorKind::Http {
+            retry_after: Some(30),
+            ..
+        }
+    ));
+}
+
+#[tokio::test]
+async fn create_commit_validation_errors_become_http_422() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits",
+        error_response(422, r#"{"message":"The body field is too long."}"#),
+    )
+    .await;
+
+    let err = signed(&server)
+        .create_commit("x", None, None)
+        .await
+        .expect_err("422 fails");
+
+    assert_eq!(err.code(), "http_422");
+}
+
+// delete_commit
+
+#[tokio::test]
+async fn delete_commit_sends_a_bodiless_signed_delete_and_accepts_204() {
+    let server = MockServer::start().await;
+    serve(&server, "DELETE", "/api/v1/commits/c1", no_content()).await;
+
+    let result = signed(&server).delete_commit("c1").await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(()));
+    assert_signed_bodiless(&only_request(&server).await);
+}
+
+#[tokio::test]
+async fn delete_commit_403_without_a_code_is_http_403() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "DELETE",
+        "/api/v1/commits/c1",
+        error_response(403, r#"{"message":"No."}"#),
+    )
+    .await;
+
+    let result = signed(&server).delete_commit("c1").await;
+
+    assert_eq!(code_of(result), "http_403");
+}
+
+// star, unstar, bookmark, unbookmark
+
+macro_rules! commit_write_test {
+    ($name:ident, $verb:expr, $path:expr, $call:ident) => {
+        #[tokio::test]
+        async fn $name() {
+            let server = MockServer::start().await;
+            serve(&server, $verb, $path, json(COMMIT)).await;
+
+            let result = signed(&server).$call("c1").await;
+
+            assert_eq!(result.map(|r| r.data).ok(), Some(the_commit()));
+            let req = only_request(&server).await;
+            assert_signed_bodiless(&req);
+        }
+    };
+}
+
+commit_write_test!(
+    star_posts_to_the_star_path_and_returns_the_commit,
+    "POST",
+    "/api/v1/commits/c1/star",
+    star
+);
+commit_write_test!(
+    unstar_deletes_the_star_path_and_returns_the_commit,
+    "DELETE",
+    "/api/v1/commits/c1/star",
+    unstar
+);
+commit_write_test!(
+    bookmark_puts_to_the_bookmark_path_and_returns_the_commit,
+    "PUT",
+    "/api/v1/commits/c1/bookmark",
+    bookmark
+);
+commit_write_test!(
+    unbookmark_deletes_the_bookmark_path_and_returns_the_commit,
+    "DELETE",
+    "/api/v1/commits/c1/bookmark",
+    unbookmark
+);
+
+#[tokio::test]
+async fn star_reads_the_rate_limit_headers() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits/c1/star",
+        json(COMMIT)
+            .insert_header("X-RateLimit-Limit", "60")
+            .insert_header("X-RateLimit-Remaining", "59"),
+    )
+    .await;
+
+    let result = signed(&server).star("c1").await.expect("star works");
+
+    assert_eq!(
+        result.rate,
+        Some(RateLimit {
+            limit: 60,
+            remaining: 59
+        })
+    );
+}
+
+#[tokio::test]
+async fn star_on_an_unavailable_commit_keeps_its_code() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits/c1/star",
+        error_response(404, r#"{"message":"Gone","code":"commit_unavailable"}"#),
+    )
+    .await;
+
+    let result = signed(&server).star("c1").await;
+
+    assert_eq!(code_of(result), "commit_unavailable");
+}
+
+// give_pastel
+
+#[tokio::test]
+async fn give_pastel_posts_and_decodes_the_allowance_beside_the_commit() {
+    let server = MockServer::start().await;
+    let body = serde_json::json!({
+        "data": commit_value(),
+        "pasteis_remaining": 4,
+        "pasteis_resets_at": "2026-10-21T00:00:00Z",
+        "author_pasteis_received": 12,
+    })
+    .to_string();
+    serve(&server, "POST", "/api/v1/commits/c1/pasteis", json(&body)).await;
+
+    let result = signed(&server)
+        .give_pastel("c1")
+        .await
+        .expect("pastel works");
+
+    assert_eq!(result.data.data, the_commit());
+    assert_eq!(result.data.pasteis_remaining, 4);
+    assert_eq!(
+        result.data.pasteis_resets_at.unix_timestamp(),
+        1_792_540_800
+    );
+    assert_eq!(result.data.author_pasteis_received, Some(12));
+    assert_signed_bodiless(&only_request(&server).await);
+}
+
+#[tokio::test]
+async fn give_pastel_accepts_a_missing_author_total() {
+    let server = MockServer::start().await;
+    let body = serde_json::json!({
+        "data": commit_value(),
+        "pasteis_remaining": 0,
+        "pasteis_resets_at": "2026-10-21T00:00:00Z",
+        "author_pasteis_received": null,
+    })
+    .to_string();
+    serve(&server, "POST", "/api/v1/commits/c1/pasteis", json(&body)).await;
+
+    let result = signed(&server)
+        .give_pastel("c1")
+        .await
+        .expect("pastel works");
+
+    assert_eq!(result.data.author_pasteis_received, None);
+}
+
+#[tokio::test]
+async fn give_pastel_exhausted_is_422_with_its_code() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits/c1/pasteis",
+        error_response(
+            422,
+            r#"{"message":"No pasteis left today.","code":"pasteis_exhausted"}"#,
+        ),
+    )
+    .await;
+
+    let result = signed(&server).give_pastel("c1").await;
+
+    assert_eq!(code_of(result), "pasteis_exhausted");
+}
+
+// report
+
+#[tokio::test]
+async fn give_pastel_403_without_a_code_is_http_403() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits/c1/pasteis",
+        error_response(403, r#"{"message":"No."}"#),
+    )
+    .await;
+
+    let result = signed(&server).give_pastel("c1").await;
+
+    assert_eq!(code_of(result), "http_403");
+}
+
+#[tokio::test]
+async fn report_posts_the_reason_and_details_and_accepts_204() {
+    let server = MockServer::start().await;
+    serve(&server, "POST", "/api/v1/commits/c1/reports", no_content()).await;
+
+    let result = signed(&server)
+        .report("c1", crate::model::ReportReason::Harassment, Some("rude"))
+        .await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(()));
+    assert_signed_json(
+        &only_request(&server).await,
+        serde_json::json!({"reason": "harassment", "details": "rude"}),
+    );
+}
+
+#[tokio::test]
+async fn report_omits_details_when_there_are_none() {
+    let server = MockServer::start().await;
+    serve(&server, "POST", "/api/v1/commits/c1/reports", no_content()).await;
+
+    let result = signed(&server)
+        .report("c1", crate::model::ReportReason::Spam, None)
+        .await;
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_signed_json(
+        &only_request(&server).await,
+        serde_json::json!({"reason": "spam"}),
+    );
+}
+
+#[tokio::test]
+async fn report_reasons_use_their_lowercase_names() {
+    use crate::model::ReportReason::*;
+    let server = MockServer::start().await;
+    serve(&server, "POST", "/api/v1/commits/c1/reports", no_content()).await;
+    let client = signed(&server);
+
+    for reason in [Spam, Harassment, Unsafe, Other] {
+        client.report("c1", reason, None).await.expect("accepted");
+    }
+
+    let sent: Vec<serde_json::Value> = received(&server)
+        .await
+        .iter()
+        .map(|r| body_of(r)["reason"].clone())
+        .collect();
+    assert_eq!(
+        sent,
+        vec!["spam", "harassment", "unsafe", "other"]
+            .into_iter()
+            .map(serde_json::Value::from)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn report_details_over_500_characters_are_left_for_the_server_to_judge() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/commits/c1/reports",
+        error_response(422, r#"{"message":"The details field is too long."}"#),
+    )
+    .await;
+    let long = "x".repeat(501);
+
+    let result = signed(&server)
+        .report("c1", crate::model::ReportReason::Other, Some(&long))
+        .await;
+
+    assert_eq!(code_of(result), "http_422");
+    assert_eq!(
+        body_of(&only_request(&server).await)["details"],
+        serde_json::Value::from(long)
+    );
+}
+
+#[tokio::test]
+async fn report_own_commit_and_unavailable_commit_keep_their_codes() {
+    let own = MockServer::start().await;
+    serve(
+        &own,
+        "POST",
+        "/api/v1/commits/c1/reports",
+        error_response(403, r#"{"message":"Yours.","code":"own_commit"}"#),
+    )
+    .await;
+    let gone = MockServer::start().await;
+    serve(
+        &gone,
+        "POST",
+        "/api/v1/commits/c1/reports",
+        error_response(404, r#"{"message":"Gone","code":"commit_unavailable"}"#),
+    )
+    .await;
+    let spam = crate::model::ReportReason::Spam;
+
+    assert_eq!(
+        code_of(signed(&own).report("c1", spam, None).await),
+        "own_commit"
+    );
+    assert_eq!(
+        code_of(signed(&gone).report("c1", spam, None).await),
+        "commit_unavailable"
+    );
+}
+
+// follow, unfollow
+
+#[tokio::test]
+async fn follow_posts_a_bodiless_signed_request_and_accepts_204() {
+    let server = MockServer::start().await;
+    serve(&server, "POST", "/api/v1/users/alice/follow", no_content()).await;
+
+    let result = signed(&server).follow("alice").await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(()));
+    assert_signed_bodiless(&only_request(&server).await);
+}
+
+#[tokio::test]
+async fn follow_ignores_an_unexpected_200_body() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/users/alice/follow",
+        json(r#"{"ok":true}"#),
+    )
+    .await;
+
+    let result = signed(&server).follow("alice").await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(()));
+}
+
+#[tokio::test]
+async fn unfollow_deletes_the_follow_path_and_accepts_204() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "DELETE",
+        "/api/v1/users/alice/follow",
+        no_content(),
+    )
+    .await;
+
+    let result = signed(&server).unfollow("alice").await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(()));
+    assert_signed_bodiless(&only_request(&server).await);
+}
+
+#[tokio::test]
+async fn follow_403_without_a_code_is_http_403() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/users/alice/follow",
+        error_response(403, r#"{"message":"No."}"#),
+    )
+    .await;
+
+    let result = signed(&server).follow("alice").await;
+
+    assert_eq!(code_of(result), "http_403");
+}
+
+// mute, unmute, block, unblock
+
+fn user_with(flag: &str, value: bool) -> String {
+    let mut v: serde_json::Value = serde_json::from_str(USER).expect("fixture parses");
+    v[flag] = serde_json::Value::Bool(value);
+    v.to_string()
+}
+
+#[tokio::test]
+async fn mute_and_unmute_return_the_user_with_the_new_state() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/users/alice/mute",
+        json(&user_with("is_muting", true)),
+    )
+    .await;
+    serve(
+        &server,
+        "DELETE",
+        "/api/v1/users/alice/mute",
+        json(&user_with("is_muting", false)),
+    )
+    .await;
+    let client = signed(&server);
+
+    let muted = client.mute("alice").await.expect("mute works").data;
+    let unmuted = client.unmute("alice").await.expect("unmute works").data;
+
+    assert_eq!((muted.data, muted.is_muting), (the_user(), true));
+    assert_eq!((unmuted.data, unmuted.is_muting), (the_user(), false));
+    for req in received(&server).await {
+        assert_signed_bodiless(&req);
+    }
+}
+
+#[tokio::test]
+async fn block_and_unblock_return_the_user_with_the_new_state() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "POST",
+        "/api/v1/users/alice/block",
+        json(&user_with("is_blocking", true)),
+    )
+    .await;
+    serve(
+        &server,
+        "DELETE",
+        "/api/v1/users/alice/block",
+        json(&user_with("is_blocking", false)),
+    )
+    .await;
+    let client = signed(&server);
+
+    let blocked = client.block("alice").await.expect("block works").data;
+    let unblocked = client.unblock("alice").await.expect("unblock works").data;
+
+    assert_eq!((blocked.data, blocked.is_blocking), (the_user(), true));
+    assert_eq!((unblocked.data, unblocked.is_blocking), (the_user(), false));
+    for req in received(&server).await {
+        assert_signed_bodiless(&req);
+    }
+}
+
+// update_lane
+
+async fn lane_body(setting: crate::model::LaneSetting) -> serde_json::Value {
+    let server = MockServer::start().await;
+    serve(&server, "PUT", "/api/v1/me/lane", json(ME)).await;
+
+    let result = signed(&server).update_lane(setting).await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(parse(ME)));
+    let req = only_request(&server).await;
+    assert!(content_type(&req).is_some_and(|v| v.starts_with("application/json")));
+    assert_eq!(verify_received(&req), Ok(()));
+    body_of(&req)
+}
+
+#[tokio::test]
+async fn update_lane_automatic_sends_a_null_lane() {
+    let body = lane_body(crate::model::LaneSetting::Automatic).await;
+
+    assert_eq!(body, serde_json::json!({"lane": null}));
+}
+
+#[tokio::test]
+async fn update_lane_palette_sends_the_index() {
+    let first = lane_body(crate::model::LaneSetting::Palette(0)).await;
+    let last = lane_body(crate::model::LaneSetting::Palette(5)).await;
+
+    assert_eq!(first, serde_json::json!({"lane": 0}));
+    assert_eq!(last, serde_json::json!({"lane": 5}));
+}
+
+#[tokio::test]
+async fn update_lane_color_sends_a_null_lane_and_lowercase_zero_padded_hex() {
+    use crate::model::{LaneSetting::Color, Rgb};
+
+    let mixed = lane_body(Color(Rgb(0xAB, 0xCD, 0xEF))).await;
+    let dark = lane_body(Color(Rgb(0, 0, 0x0A))).await;
+
+    assert_eq!(mixed, serde_json::json!({"lane": null, "color": "#abcdef"}));
+    assert_eq!(dark, serde_json::json!({"lane": null, "color": "#00000a"}));
+}
+
+#[tokio::test]
+async fn update_lane_with_a_palette_index_above_5_is_refused_locally() {
+    let server = MockServer::start().await;
+
+    let result = signed(&server)
+        .update_lane(crate::model::LaneSetting::Palette(6))
+        .await;
+
+    assert_eq!(code_of(result), "invalid_argument");
+    assert!(received(&server).await.is_empty());
+}
+
+// update_pasteis_mode
+
+#[tokio::test]
+async fn update_pasteis_mode_puts_the_flag_and_returns_the_current_user() {
+    let server = MockServer::start().await;
+    serve(&server, "PUT", "/api/v1/me/pasteis-mode", json(ME)).await;
+    let client = signed(&server);
+
+    let on = client.update_pasteis_mode(true).await;
+    let off = client.update_pasteis_mode(false).await;
+
+    assert_eq!(on.map(|r| r.data).ok(), Some(parse(ME)));
+    assert!(off.is_ok());
+    let bodies: Vec<_> = received(&server).await;
+    assert_eq!(bodies.len(), 2);
+    assert_signed_json(&bodies[0], serde_json::json!({"enabled": true}));
+    assert_signed_json(&bodies[1], serde_json::json!({"enabled": false}));
+}
+
+// sync_github
+
+#[tokio::test]
+async fn sync_github_puts_a_bodiless_signed_request_and_returns_the_current_user() {
+    let server = MockServer::start().await;
+    serve(&server, "PUT", "/api/v1/me/github", json(ME)).await;
+
+    let result = signed(&server).sync_github().await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(parse(ME)));
+    assert_signed_bodiless(&only_request(&server).await);
+}
+
+#[tokio::test]
+async fn sync_github_failure_and_throttle_keep_their_codes() {
+    let failed = MockServer::start().await;
+    serve(
+        &failed,
+        "PUT",
+        "/api/v1/me/github",
+        error_response(
+            503,
+            r#"{"message":"GitHub is down.","code":"github_sync_failed"}"#,
+        ),
+    )
+    .await;
+    let throttled = MockServer::start().await;
+    serve(
+        &throttled,
+        "PUT",
+        "/api/v1/me/github",
+        error_response(
+            429,
+            r#"{"message":"You just synced.","code":"rate_limited"}"#,
+        )
+        .insert_header("Retry-After", "60"),
+    )
+    .await;
+
+    assert_eq!(
+        code_of(signed(&failed).sync_github().await),
+        "github_sync_failed"
+    );
+    let err = signed(&throttled)
+        .sync_github()
+        .await
+        .expect_err("429 fails");
+    assert_eq!(err.code(), "rate_limited");
+    assert!(matches!(
+        err.kind,
+        super::error::ErrorKind::Http {
+            retry_after: Some(60),
+            ..
+        }
+    ));
+}
+
+// delete_account
+
+#[tokio::test]
+async fn delete_account_deletes_me_bodiless_and_accepts_204() {
+    let server = MockServer::start().await;
+    serve(&server, "DELETE", "/api/v1/me", no_content()).await;
+
+    let result = signed(&server).delete_account().await;
+
+    assert_eq!(result.map(|r| r.data).ok(), Some(()));
+    assert_signed_bodiless(&only_request(&server).await);
+}
+
+// shared behavior
+
+#[tokio::test]
+async fn guest_calling_any_write_endpoint_fails_locally() {
+    use crate::model::{LaneSetting, ReportReason};
+    let server = MockServer::start().await;
+    let c = guest(&server);
+
+    let codes = vec![
+        code_of(c.create_commit("x", None, None).await),
+        code_of(c.delete_commit("c1").await),
+        code_of(c.star("c1").await),
+        code_of(c.unstar("c1").await),
+        code_of(c.bookmark("c1").await),
+        code_of(c.unbookmark("c1").await),
+        code_of(c.give_pastel("c1").await),
+        code_of(c.report("c1", ReportReason::Spam, None).await),
+        code_of(c.follow("alice").await),
+        code_of(c.unfollow("alice").await),
+        code_of(c.mute("alice").await),
+        code_of(c.unmute("alice").await),
+        code_of(c.block("alice").await),
+        code_of(c.unblock("alice").await),
+        code_of(c.update_lane(LaneSetting::Automatic).await),
+        code_of(c.update_pasteis_mode(true).await),
+        code_of(c.sync_github().await),
+        code_of(c.delete_account().await),
+    ];
+
+    assert_eq!(codes, vec!["sign_in_required"; 18]);
+    assert!(
+        received(&server).await.is_empty(),
+        "nothing may reach the server"
+    );
+}
+
+#[tokio::test]
+async fn write_path_segments_that_would_be_rewritten_never_reach_the_network() {
+    let server = MockServer::start().await;
+    let c = signed(&server);
+
+    let codes = vec![
+        code_of(c.delete_commit("..").await),
+        code_of(c.star("").await),
+        code_of(c.unstar("a/b").await),
+        code_of(c.bookmark("..").await),
+        code_of(c.unbookmark("").await),
+        code_of(c.give_pastel("a/b").await),
+        code_of(c.follow("..").await),
+        code_of(c.unfollow("a/b").await),
+        code_of(c.mute("a\\b").await),
+        code_of(c.unmute("..").await),
+        code_of(c.block("").await),
+        code_of(c.unblock("").await),
+        code_of(
+            c.report("../x", crate::model::ReportReason::Spam, None)
+                .await,
+        ),
+    ];
+
+    assert_eq!(codes, vec!["invalid_argument"; 13]);
+    assert!(received(&server).await.is_empty());
+}

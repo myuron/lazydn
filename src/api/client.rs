@@ -7,8 +7,9 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::model::{
-    Commit, GroupPage, LogPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse,
-    User, UserResponse,
+    BlockResponse, Commit, GroupPage, LaneSetting, LogPage, MeResponse, MuteResponse,
+    NotificationsPage, Page, PastelResponse, ReportReason, Rgb, ThreadItem, ThreadResponse, User,
+    UserResponse,
 };
 
 use super::clock::Clock;
@@ -49,6 +50,25 @@ pub struct ApiClient {
     http: reqwest::Client,
     timeout: Duration,
     body_limit: usize,
+}
+
+/// The `{"data": ...}` envelope some endpoints put around their result.
+#[derive(serde::Deserialize)]
+struct Wrapped<T> {
+    data: T,
+}
+
+/// Serializes a request body once, so the signed bytes and the sent bytes are the same.
+fn json_body(value: &serde_json::Value) -> Vec<u8> {
+    // A Value with string keys always serializes, so there is no error to surface.
+    serde_json::to_vec(value).expect("a JSON value serializes")
+}
+
+/// A caller-supplied value the client refuses before any request is made.
+fn invalid(msg: &str) -> ApiError {
+    ApiError {
+        kind: ErrorKind::InvalidArgument(msg.to_string()),
+    }
 }
 
 type ApiResult<T> = Result<Response<T>, ApiError>;
@@ -99,12 +119,12 @@ impl ApiClient {
         signer: Option<Arc<dyn Signer>>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, ApiError> {
-        let invalid = || ApiError {
+        let bad_base = || ApiError {
             kind: ErrorKind::InvalidBaseUrl,
         };
-        let base = Url::parse(base_url).map_err(|_| invalid())?;
+        let base = Url::parse(base_url).map_err(|_| bad_base())?;
         if base.cannot_be_a_base() {
-            return Err(invalid());
+            return Err(bad_base());
         }
         Ok(ApiClient {
             base,
@@ -135,9 +155,7 @@ impl ApiClient {
             .iter()
             .find(|s| s.is_empty() || **s == "." || **s == ".." || s.contains(['/', '\\']))
         {
-            return Err(ApiError {
-                kind: ErrorKind::InvalidArgument(format!("bad path segment {bad:?}")),
-            });
+            return Err(invalid(&format!("bad path segment {bad:?}")));
         }
         let mut url = self.base.clone();
         url.set_query(None);
@@ -158,6 +176,63 @@ impl ApiClient {
         body: Option<Vec<u8>>,
         auth: Auth,
     ) -> ApiResult<T> {
+        let (bytes, rate) = self.send_raw(method, segments, query, body, auth).await?;
+        let data = serde_json::from_slice(&bytes).map_err(|e| ApiError {
+            kind: ErrorKind::Decode(e.to_string()),
+        })?;
+        Ok(Response { data, rate })
+    }
+
+    /// For endpoints documented to answer 204. A 204 body is not read; any other 2xx body is read within the size limit
+    /// and discarded without decoding, so extra content never turns success into an error.
+    async fn send_unit(
+        &self,
+        method: Method,
+        segments: &[&str],
+        body: Option<Vec<u8>>,
+    ) -> ApiResult<()> {
+        let (_, rate) = self
+            .send_raw(method, segments, &[], body, Auth::Required)
+            .await?;
+        Ok(Response { data: (), rate })
+    }
+
+    /// Signed endpoints that wrap their result as `{"data": ...}`.
+    async fn send_wrapped<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        segments: &[&str],
+        body: Option<Vec<u8>>,
+    ) -> ApiResult<T> {
+        let r: Response<Wrapped<T>> = self
+            .send(method, segments, &[], body, Auth::Required)
+            .await?;
+        Ok(Response {
+            data: r.data.data,
+            rate: r.rate,
+        })
+    }
+
+    /// Sends a signed request whose response is not wrapped in `data`.
+    async fn send_signed<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        segments: &[&str],
+        body: Option<Vec<u8>>,
+    ) -> ApiResult<T> {
+        self.send(method, segments, &[], body, Auth::Required).await
+    }
+
+    /// Does the transport work shared by every call: signing, sending, the size limit and status handling.
+    /// Returns the raw body, empty for 204.
+    async fn send_raw(
+        &self,
+        method: Method,
+        segments: &[&str],
+        query: &[(&str, String)],
+        body: Option<Vec<u8>>,
+        auth: Auth,
+    ) -> Result<(Vec<u8>, Option<RateLimit>), ApiError> {
         if auth == Auth::Required && self.signer.is_none() {
             return Err(ApiError {
                 kind: ErrorKind::SignInRequired,
@@ -197,17 +272,14 @@ impl ApiClient {
         let resp = req.send().await.map_err(network)?;
         let status = resp.status();
         let headers = resp.headers().clone();
+        if status == reqwest::StatusCode::NO_CONTENT {
+            return Ok((Vec::new(), rate_limit(&headers)));
+        }
         let bytes = self.read_limited(resp).await?;
         if !status.is_success() {
             return Err(http_error(status, &headers, &bytes));
         }
-        let data = serde_json::from_slice(&bytes).map_err(|e| ApiError {
-            kind: ErrorKind::Decode(e.to_string()),
-        })?;
-        Ok(Response {
-            data,
-            rate: rate_limit(&headers),
-        })
+        Ok((bytes, rate_limit(&headers)))
     }
 
     /// Counts while reading, since a missing or false Content-Length proves nothing.
@@ -367,8 +439,164 @@ impl ApiClient {
         let bytes = serde_json::to_vec(&body).map_err(|e| ApiError {
             kind: ErrorKind::Decode(e.to_string()),
         })?;
-        self.send(Method::POST, &["devices"], &[], Some(bytes), Auth::Required)
+        self.send_signed(Method::POST, &["devices"], Some(bytes))
             .await
+    }
+}
+
+impl ApiClient {
+    /// Posts a commit, as a reply when `parent_id` is set or a quote when `quoted_commit_id` is set, never both
+    /// (signature required; a guest gets `sign_in_required`).
+    ///
+    /// An empty `body`, an empty id, or both ids is `invalid_argument` without a request, even for a
+    /// guest; length limits are left to the server.
+    pub async fn create_commit(
+        &self,
+        body: &str,
+        parent_id: Option<&str>,
+        quoted_commit_id: Option<&str>,
+    ) -> ApiResult<Commit> {
+        if body.is_empty() {
+            return Err(invalid("body is empty"));
+        }
+        if parent_id.is_some() && quoted_commit_id.is_some() {
+            return Err(invalid("a commit cannot both reply and quote"));
+        }
+        // The server turns an empty id into null, which would post a reply as a top-level commit.
+        if parent_id == Some("") || quoted_commit_id == Some("") {
+            return Err(invalid("empty commit id"));
+        }
+        let mut json = serde_json::json!({"body": body});
+        if let Some(p) = parent_id {
+            json["parent_id"] = p.into();
+        }
+        if let Some(q) = quoted_commit_id {
+            json["quoted_commit_id"] = q.into();
+        }
+        self.send_wrapped(Method::POST, &["commits"], Some(json_body(&json)))
+            .await
+    }
+
+    /// Deletes the viewer's own commit (signature required; a guest gets `sign_in_required`).
+    pub async fn delete_commit(&self, id: &str) -> ApiResult<()> {
+        self.send_unit(Method::DELETE, &["commits", id], None).await
+    }
+
+    /// Stars a commit; returns it with the new counts (signature required; a guest gets `sign_in_required`).
+    pub async fn star(&self, id: &str) -> ApiResult<Commit> {
+        self.send_wrapped(Method::POST, &["commits", id, "star"], None)
+            .await
+    }
+
+    /// Removes the viewer's star (signature required; a guest gets `sign_in_required`).
+    pub async fn unstar(&self, id: &str) -> ApiResult<Commit> {
+        self.send_wrapped(Method::DELETE, &["commits", id, "star"], None)
+            .await
+    }
+
+    /// Saves a commit privately (signature required; a guest gets `sign_in_required`).
+    pub async fn bookmark(&self, id: &str) -> ApiResult<Commit> {
+        self.send_wrapped(Method::PUT, &["commits", id, "bookmark"], None)
+            .await
+    }
+
+    /// Removes a commit from the saved list (signature required; a guest gets `sign_in_required`).
+    pub async fn unbookmark(&self, id: &str) -> ApiResult<Commit> {
+        self.send_wrapped(Method::DELETE, &["commits", id, "bookmark"], None)
+            .await
+    }
+
+    /// Gives one pastel from the daily allowance (signature required; a guest gets `sign_in_required`).
+    pub async fn give_pastel(&self, id: &str) -> ApiResult<PastelResponse> {
+        self.send_signed(Method::POST, &["commits", id, "pasteis"], None)
+            .await
+    }
+
+    /// Reports a commit; `details` is sent as given, up to 500 characters by the server's rule (signature required; a guest gets `sign_in_required`).
+    pub async fn report(
+        &self,
+        id: &str,
+        reason: ReportReason,
+        details: Option<&str>,
+    ) -> ApiResult<()> {
+        let mut body = serde_json::json!({"reason": reason.as_str()});
+        if let Some(d) = details {
+            body["details"] = d.into();
+        }
+        self.send_unit(
+            Method::POST,
+            &["commits", id, "reports"],
+            Some(json_body(&body)),
+        )
+        .await
+    }
+
+    /// Follows a user (signature required; a guest gets `sign_in_required`).
+    pub async fn follow(&self, username: &str) -> ApiResult<()> {
+        self.send_unit(Method::POST, &["users", username, "follow"], None)
+            .await
+    }
+
+    /// Unfollows a user (signature required; a guest gets `sign_in_required`).
+    pub async fn unfollow(&self, username: &str) -> ApiResult<()> {
+        self.send_unit(Method::DELETE, &["users", username, "follow"], None)
+            .await
+    }
+
+    /// Mutes a user (signature required; a guest gets `sign_in_required`).
+    pub async fn mute(&self, username: &str) -> ApiResult<MuteResponse> {
+        self.send_signed(Method::POST, &["users", username, "mute"], None)
+            .await
+    }
+
+    /// Unmutes a user (signature required; a guest gets `sign_in_required`).
+    pub async fn unmute(&self, username: &str) -> ApiResult<MuteResponse> {
+        self.send_signed(Method::DELETE, &["users", username, "mute"], None)
+            .await
+    }
+
+    /// Blocks a user (signature required; a guest gets `sign_in_required`).
+    pub async fn block(&self, username: &str) -> ApiResult<BlockResponse> {
+        self.send_signed(Method::POST, &["users", username, "block"], None)
+            .await
+    }
+
+    /// Unblocks a user (signature required; a guest gets `sign_in_required`).
+    pub async fn unblock(&self, username: &str) -> ApiResult<BlockResponse> {
+        self.send_signed(Method::DELETE, &["users", username, "block"], None)
+            .await
+    }
+
+    /// Sets the viewer's lane; a palette index above 5 is `invalid_argument` without a request, even for a guest
+    /// (signature required; a guest gets `sign_in_required`).
+    pub async fn update_lane(&self, lane: LaneSetting) -> ApiResult<MeResponse> {
+        let body = match lane {
+            LaneSetting::Automatic => serde_json::json!({"lane": null}),
+            LaneSetting::Palette(n) if n <= 5 => serde_json::json!({"lane": n}),
+            LaneSetting::Palette(n) => return Err(invalid(&format!("lane {n} is not in 0..=5"))),
+            LaneSetting::Color(Rgb(r, g, b)) => {
+                serde_json::json!({"lane": null, "color": format!("#{r:02x}{g:02x}{b:02x}")})
+            }
+        };
+        self.send_signed(Method::PUT, &["me", "lane"], Some(json_body(&body)))
+            .await
+    }
+
+    /// Turns pastéis mode on or off (signature required; a guest gets `sign_in_required`).
+    pub async fn update_pasteis_mode(&self, enabled: bool) -> ApiResult<MeResponse> {
+        let body = json_body(&serde_json::json!({"enabled": enabled}));
+        self.send_signed(Method::PUT, &["me", "pasteis-mode"], Some(body))
+            .await
+    }
+
+    /// Re-syncs the profile from GitHub, once a minute at most (signature required; a guest gets `sign_in_required`).
+    pub async fn sync_github(&self) -> ApiResult<MeResponse> {
+        self.send_signed(Method::PUT, &["me", "github"], None).await
+    }
+
+    /// Deletes the account and every device; irreversible (signature required; a guest gets `sign_in_required`).
+    pub async fn delete_account(&self) -> ApiResult<()> {
+        self.send_unit(Method::DELETE, &["me"], None).await
     }
 }
 
