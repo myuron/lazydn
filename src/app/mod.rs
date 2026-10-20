@@ -22,6 +22,7 @@ pub use toast::{Toast, ToastKind};
 use crate::action::{Action, Effect, Failure};
 use crate::api::client::RateLimit;
 use crate::feed::{Feed, FeedKey, LoadState, ReqId, settle_scroll};
+use crate::keyboard::KeyboardMode;
 use crate::layout::LayoutMode;
 use crate::model::Lane;
 use crate::notifications::NotificationsState;
@@ -226,6 +227,7 @@ pub struct App {
     /// The newest request id at the last sign-in; a rejection of an older one says nothing about the new device.
     sign_in_boundary: Option<ReqId>,
     key_path: std::path::PathBuf,
+    keyboard: KeyboardMode,
     /// Consecutive failed attempts to confirm the session; sets the retry delay while restoring.
     restore_failures: u32,
 }
@@ -294,6 +296,7 @@ impl App {
             sign_in: SignInState::default(),
             sign_in_boundary: None,
             key_path,
+            keyboard: KeyboardMode::default(),
             restore_failures: 0,
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
@@ -556,6 +559,7 @@ impl App {
             | Action::SignInFailed { .. }
             | Action::DeviceRegistered { .. }
             | Action::Notice { .. }) => effects.extend(self.on_sign_in_action(sign_in_action)),
+            Action::Compose(_) => {}
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
                 if let Some(state) = self.threads.get_mut(&id)
@@ -767,6 +771,19 @@ impl App {
 
     pub fn nav_cursor(&self) -> NavItem {
         self.nav_cursor
+    }
+
+    /// Whether keys go to a composer's editor. No composer exists yet.
+    pub fn composer_focused(&self) -> bool {
+        false
+    }
+
+    pub fn keyboard(&self) -> KeyboardMode {
+        self.keyboard
+    }
+
+    pub fn set_keyboard(&mut self, keyboard: KeyboardMode) {
+        self.keyboard = keyboard;
     }
 
     pub fn g_pending(&self) -> bool {

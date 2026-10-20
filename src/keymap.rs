@@ -50,6 +50,9 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if app.modal() == Some(Modal::SignIn) {
         return map_sign_in_key(key);
     }
+    if app.composer_focused() {
+        return map_composer_key(key).map(Action::Compose);
+    }
     if key.kind != KeyEventKind::Press {
         return None;
     }
@@ -185,6 +188,72 @@ fn g_target(app: &App, c: char) -> Option<Screen> {
         'p' => Some(Screen::Profile(app.own_handle())),
         's' => Some(Screen::Settings),
         'v' => Some(Screen::Saved),
+        _ => None,
+    }
+}
+
+/// An editing or control key typed while a composer has the focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposerKey {
+    Insert(char),
+    Newline,
+    /// Tab: spaces, not a focus change.
+    Tab,
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+    /// Ctrl+U.
+    KillToLineStart,
+    /// Ctrl+W.
+    DeleteWordBack,
+    /// Ctrl+Enter or Ctrl+S.
+    Submit,
+    /// Esc.
+    Close,
+    /// Ctrl+C.
+    Quit,
+}
+
+/// Every key a composer reads, so that no global binding fires while typing. Edits repeat when held;
+/// submit, close and quit act on the press only.
+pub fn map_composer_key(key: KeyEvent) -> Option<ComposerKey> {
+    let pressed = key.kind == KeyEventKind::Press;
+    if key.kind == KeyEventKind::Release {
+        return None;
+    }
+    let mods = key.modifiers;
+    let ctrl = mods.contains(KeyModifiers::CONTROL);
+    let alt = mods.contains(KeyModifiers::ALT);
+    match key.code {
+        KeyCode::Char(c) if ctrl && alt => {
+            (!c.is_ascii_alphabetic()).then_some(ComposerKey::Insert(c))
+        }
+        KeyCode::Char(c) if ctrl => match c {
+            'c' if pressed => Some(ComposerKey::Quit),
+            's' if pressed => Some(ComposerKey::Submit),
+            'j' => Some(ComposerKey::Newline),
+            'u' => Some(ComposerKey::KillToLineStart),
+            'w' => Some(ComposerKey::DeleteWordBack),
+            _ => None,
+        },
+        KeyCode::Char(c) if !alt => Some(ComposerKey::Insert(c)),
+        KeyCode::Enter if ctrl => pressed.then_some(ComposerKey::Submit),
+        KeyCode::Enter => Some(ComposerKey::Newline),
+        KeyCode::Esc if pressed => Some(ComposerKey::Close),
+        KeyCode::Tab => Some(ComposerKey::Tab),
+        KeyCode::Backspace => Some(ComposerKey::Backspace),
+        KeyCode::Delete => Some(ComposerKey::Delete),
+        KeyCode::Left => Some(ComposerKey::Left),
+        KeyCode::Right => Some(ComposerKey::Right),
+        KeyCode::Up => Some(ComposerKey::Up),
+        KeyCode::Down => Some(ComposerKey::Down),
+        KeyCode::Home => Some(ComposerKey::Home),
+        KeyCode::End => Some(ComposerKey::End),
         _ => None,
     }
 }

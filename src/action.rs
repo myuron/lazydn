@@ -228,6 +228,8 @@ pub enum Action {
         tab: LogTab,
         id: String,
     },
+    /// A key typed while a composer has the focus.
+    Compose(crate::keymap::ComposerKey),
     /// A bracketed paste. Only the sign-in dialog takes it; elsewhere it is dropped.
     Paste(String),
     /// A character typed into the Code field of the sign-in dialog.

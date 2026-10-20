@@ -1,10 +1,15 @@
 use std::io::stdout;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use color_eyre::Result;
 use color_eyre::config::HookBuilder;
-use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste, Event, EventStream};
+use crossterm::event::{
+    DisableBracketedPaste, EnableBracketedPaste, Event, EventStream, KeyboardEnhancementFlags,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
+use crossterm::terminal::supports_keyboard_enhancement;
 use futures_util::{FutureExt, StreamExt};
 use lazydn::action::Action;
 use lazydn::api::clock::SystemClock;
@@ -18,6 +23,9 @@ use lazydn::{keymap, ui};
 use ratatui::DefaultTerminal;
 use time::{OffsetDateTime, UtcOffset};
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
+
+/// Whether the keyboard flags were pushed, so that only then are they popped.
+static KEYBOARD_PUSHED: AtomicBool = AtomicBool::new(false);
 
 type AppRuntime = Runtime<TokioExec, SystemLauncher, Osc52Clipboard<std::io::Stdout>, FileStore>;
 
@@ -35,7 +43,7 @@ fn main() -> Result<()> {
     let base = config::base_url(&env)?;
     let key_path = config::key_path(&config_dir);
     let (session, key_status, key) = session_for_key(&key_path);
-    let startup = Startup {
+    let mut startup = Startup {
         session,
         key_status,
         key_path: key_path.clone(),
@@ -46,6 +54,7 @@ fn main() -> Result<()> {
         now: OffsetDateTime::now_utc(),
         offset: local_offset,
         size: crossterm::terminal::size().unwrap_or((80, 24)),
+        keyboard: lazydn::keyboard::KeyboardMode::default(),
     };
 
     let runtime = tokio::runtime::Runtime::new()?;
@@ -61,6 +70,35 @@ fn main() -> Result<()> {
             tx,
         )?
     };
+    // ratatui chains its own restoring hook onto this one; paste goes off first, then the
+    // terminal is restored, and only then does color_eyre print the report on a usable screen.
+    std::panic::set_hook(panic_hook.into_panic_hook());
+    let mut terminal = ratatui::init();
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        pop_keyboard_flags();
+        let _ = crossterm::execute!(stdout(), DisableBracketedPaste);
+        previous(info);
+        // Not left running: a panic in a tokio task would otherwise leave the app alive on a
+        // restored terminal with no one reading the keys. Exiting here rather than via a
+        // `panic = "abort"` profile keeps the behaviour the same in every build profile.
+        std::process::exit(101);
+    }));
+    let _ = crossterm::execute!(stdout(), EnableBracketedPaste);
+    // A failed query means a terminal that cannot be asked, which counts as unsupported.
+    let enhanced = supports_keyboard_enhancement().unwrap_or(false);
+    if enhanced
+        && crossterm::execute!(
+            stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )
+        .is_ok()
+    {
+        KEYBOARD_PUSHED.store(true, Ordering::SeqCst);
+    }
+    startup.keyboard = lazydn::keyboard::KeyboardMode {
+        enhanced: KEYBOARD_PUSHED.load(Ordering::SeqCst),
+    };
     let (app, first_effects) = build_app(startup);
     let app_runtime = Runtime {
         app,
@@ -72,22 +110,8 @@ fn main() -> Result<()> {
         base_url: base.url,
     };
 
-    // ratatui chains its own restoring hook onto this one; paste goes off first, then the
-    // terminal is restored, and only then does color_eyre print the report on a usable screen.
-    std::panic::set_hook(panic_hook.into_panic_hook());
-    let mut terminal = ratatui::init();
-    let _ = crossterm::execute!(stdout(), EnableBracketedPaste);
-    let previous = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        let _ = crossterm::execute!(stdout(), DisableBracketedPaste);
-        previous(info);
-        // Not left running: a panic in a tokio task would otherwise leave the app alive on a
-        // restored terminal with no one reading the keys. Exiting here rather than via a
-        // `panic = "abort"` profile keeps the behaviour the same in every build profile.
-        std::process::exit(101);
-    }));
-
     let result = runtime.block_on(run(app_runtime, &mut terminal, rx, first_effects));
+    pop_keyboard_flags();
     let _ = crossterm::execute!(stdout(), DisableBracketedPaste);
     ratatui::restore();
     if let Ok(Control::Quit {
@@ -97,6 +121,12 @@ fn main() -> Result<()> {
         eprintln!("lazydn: could not save the last visit: {error}");
     }
     result.map(|_| ())
+}
+
+fn pop_keyboard_flags() {
+    if KEYBOARD_PUSHED.swap(false, Ordering::SeqCst) {
+        let _ = crossterm::execute!(stdout(), PopKeyboardEnhancementFlags);
+    }
 }
 
 async fn run(
@@ -149,10 +179,5 @@ fn step(rt: &mut AppRuntime, action: Option<Action>) -> Control {
 }
 
 fn action_of(rt: &AppRuntime, event: Event) -> Option<Action> {
-    match event {
-        Event::Key(key) => keymap::map_key(&rt.app, key),
-        Event::Resize(w, h) => Some(Action::Resize(w, h)),
-        Event::Paste(text) => Some(Action::Paste(text)),
-        _ => None,
-    }
+    keymap::map_event(&rt.app, &event)
 }

@@ -11,6 +11,7 @@ use crate::api::test_support::{
 };
 use crate::app::{KeyStatus, LogTab, Prefs, Session, Theme, ToastKind};
 use crate::config::{LastVisits, LoadedConfig};
+use crate::keyboard::KeyboardMode;
 use crate::test_support::NOW;
 
 #[test]
@@ -117,6 +118,7 @@ fn startup() -> Startup {
         now: NOW,
         offset: UtcOffset::UTC,
         size: (100, 30),
+        keyboard: KeyboardMode::default(),
     }
 }
 
@@ -230,4 +232,19 @@ fn the_app_knows_the_terminal_size_when_it_starts() {
         ..startup()
     });
     assert_eq!(app.size(), (91, 33));
+}
+
+#[test]
+fn the_keyboard_mode_reaches_the_app() {
+    let (app, _) = build_app(Startup {
+        keyboard: KeyboardMode { enhanced: true },
+        ..startup()
+    });
+    assert!(app.keyboard().enhanced);
+}
+
+#[test]
+fn a_plain_keyboard_reaches_the_app_as_plain() {
+    let (app, _) = build_app(startup());
+    assert!(!app.keyboard().enhanced);
 }

@@ -7,6 +7,7 @@ use crate::action::{Action, Effect};
 use crate::api::keys::KeyPair;
 use crate::app::{App, KeyStatus, Session, ToastKind};
 use crate::config::{LastVisits, LoadedConfig};
+use crate::keyboard::KeyboardMode;
 
 /// Looks at the device key once, before the app starts.
 /// A readable key means the session is to be restored, and the key is handed on to sign requests;
@@ -40,6 +41,7 @@ pub struct Startup {
     pub offset: UtcOffset,
     /// Terminal columns and rows, so that the first fetches are planned for the real screen.
     pub size: (u16, u16),
+    pub keyboard: KeyboardMode,
 }
 
 /// Builds the app and returns the effects of its first `Init`.
@@ -68,6 +70,7 @@ pub fn build_app(startup: Startup) -> (App, Vec<Effect>) {
             text,
         });
     }
+    app.set_keyboard(startup.keyboard);
     app.update(Action::Resize(startup.size.0, startup.size.1));
     let effects = app.update(Action::Init);
     (app, effects)

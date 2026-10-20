@@ -1,9 +1,12 @@
 pub mod action;
 pub mod api;
 pub mod app;
+pub mod body;
 pub mod config;
+pub mod editor;
 pub mod feed;
 pub mod highlight;
+pub mod keyboard;
 pub mod keymap;
 pub mod lane;
 pub mod layout;
@@ -19,9 +22,17 @@ pub mod timefmt;
 pub mod ui;
 
 #[cfg(test)]
+mod body_tests;
+#[cfg(test)]
 mod config_tests;
 #[cfg(test)]
+mod editor_tests;
+#[cfg(test)]
 mod feed_tests;
+#[cfg(test)]
+mod keyboard_tests;
+#[cfg(test)]
+mod keymap_tests;
 #[cfg(test)]
 mod last_visit_tests;
 #[cfg(test)]
