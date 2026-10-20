@@ -77,6 +77,7 @@ async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
         | Effect::RegisterDevice { .. }
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
+        | Effect::SaveConfig(_)
         | Effect::CopyLink(_) => return None,
         Effect::SyncGithub { req } => client.sync_github().await.map(|r| {
             let action = Action::MeWriteDone {
@@ -468,6 +469,7 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         | Effect::RegisterDevice { .. }
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
+        | Effect::SaveConfig(_)
         | Effect::CopyLink(_) => return None,
         Effect::SyncGithub { req } => Action::MeWriteFailed {
             kind: MeWrite::Sync,

@@ -61,6 +61,8 @@ mod report_tests;
 #[cfg(test)]
 mod session_tests;
 #[cfg(test)]
+mod settings_appearance_tests;
+#[cfg(test)]
 mod settings_tests;
 #[cfg(test)]
 mod settings_write_tests;

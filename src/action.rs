@@ -632,4 +632,6 @@ pub enum Effect {
     LoadDrafts {
         account: String,
     },
+    /// Writes the Appearance settings to `config.toml`. The runtime does it on the spot, not on a task.
+    SaveConfig(crate::app::Prefs),
 }

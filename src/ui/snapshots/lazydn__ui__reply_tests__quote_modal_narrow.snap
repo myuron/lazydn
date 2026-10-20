@@ -31,4 +31,4 @@ expression: terminal.backend()
 "┃ ○ That's the root commit. There's nothing before it.     ┃"
 "┃                                                          ┃"
 "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
-" j/k ↵ c ?                                              -/- "
+" ^S ↵ Esc                                               -/- "

@@ -6,7 +6,7 @@ use crate::app::{LogTab, Modal, NavItem, Pane, Screen};
 use crate::test_support::*;
 use crate::ui::layout::{LayoutMode, split};
 use crate::ui::nav::{badge, narrow_notifs_label};
-use crate::ui::statusline::{breadcrumb, left, right};
+use crate::ui::statusline::{breadcrumb, right};
 
 const FOLLOWING: Screen = Screen::Log(LogTab::Following);
 const LATEST: Screen = Screen::Log(LogTab::Latest);
@@ -466,19 +466,9 @@ fn t13_narrow_label_appends_badge_in_parentheses() {
 // 14. statusline strings
 
 #[test]
-fn t14_statusline_left_and_right_per_layout_mode() {
-    let bc = "Log > Following";
-    assert_eq!(
-        left(LayoutMode::Wide, bc),
-        "Log > Following  j/k move  ↵ open  c commit  Tab pane  ? help"
-    );
+fn t14_statusline_right_end_per_layout_mode() {
     assert_eq!(right(LayoutMode::Wide), "API -/-  ○ connecting");
-    assert_eq!(
-        left(LayoutMode::Medium, bc),
-        "Log > Following  j/k move  ↵ open  c commit  ? help"
-    );
     assert_eq!(right(LayoutMode::Medium), "-/-");
-    assert_eq!(left(LayoutMode::Narrow, bc), "j/k ↵ c ?");
     assert_eq!(right(LayoutMode::Narrow), "-/-");
 }
 

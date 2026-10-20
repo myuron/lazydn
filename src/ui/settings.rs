@@ -6,7 +6,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::{App, Me, SettingsTab, Theme};
 use crate::feed::LoadState;
 use crate::model::{Lane, Rgb, User};
-use crate::settings::{ProfileRow, UserList, parse_hex_color, saved_lane_choice};
+use crate::settings::{AppearanceRow, ProfileRow, UserList, parse_hex_color, saved_lane_choice};
 use crate::timefmt::relative;
 use crate::ui::card::clean_inline;
 use crate::ui::feed::{plain, retry_hint, truncate};
@@ -219,23 +219,56 @@ fn profile(app: &App, limit: usize) -> Vec<Line<'static>> {
 
 // --- Appearance -------------------------------------------------------------
 
+/// Kept in the file but not read by the drawing yet.
+const NOT_APPLIED: &str = "  (not applied yet)";
+
 fn appearance(app: &App, limit: usize) -> Vec<Line<'static>> {
     let prefs = app.prefs();
+    let focus = app.settings().appearance_row;
     let theme_name = match prefs.theme {
         Theme::Dark => "dark",
         Theme::Light => "light",
     };
-    vec![
-        pair(" Theme", theme_name, limit),
-        pair(" Collapse nav", on_off(prefs.collapse_nav), limit),
-        pair(" Lane dimming", on_off(prefs.lane_dimming), limit),
-        pair(
-            " Reply previews",
-            &prefs.reply_preview_limit.to_string(),
-            limit,
+    let limit_text = prefs.reply_preview_limit.to_string();
+    [
+        (AppearanceRow::Theme, " Theme", theme_name, true),
+        (
+            AppearanceRow::CollapseNav,
+            " Collapse nav",
+            on_off(prefs.collapse_nav),
+            true,
         ),
-        pair(" ASCII mode", on_off(prefs.ascii), limit),
+        (
+            AppearanceRow::LaneDimming,
+            " Lane dimming",
+            on_off(prefs.lane_dimming),
+            true,
+        ),
+        (
+            AppearanceRow::ReplyPreview,
+            " Reply previews",
+            limit_text.as_str(),
+            false,
+        ),
+        (
+            AppearanceRow::Ascii,
+            " ASCII mode",
+            on_off(prefs.ascii),
+            false,
+        ),
     ]
+    .into_iter()
+    .map(|(row, label, value, unapplied)| {
+        let full = format!("{value}{NOT_APPLIED}");
+        // The value matters more than the note, so a narrow pane keeps only the value.
+        let shown = if unapplied && label.width() + 1 + full.width() <= limit {
+            full.as_str()
+        } else {
+            value
+        };
+        pair(&marked(label, row == focus), shown, limit)
+    })
+    .collect()
 }
 
 // --- Safety -----------------------------------------------------------------
@@ -268,7 +301,7 @@ fn section(
         if list.pending.is_some() {
             out.push(plain(" ┊ (loading...)", limit));
         } else if let LoadState::Failed { code, .. } = &list.load {
-            out.push(retry_hint(code, limit));
+            out.push(retry_hint(code, limit, false));
         } else if list.loaded_once {
             out.push(plain(empty, limit));
         }

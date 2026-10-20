@@ -41,6 +41,20 @@ pub fn parse_hex_color(digits: &str) -> Option<crate::model::Rgb> {
     Some(crate::model::Rgb(byte(0)?, byte(2)?, byte(4)?))
 }
 
+/// The numbers of reply previews that Appearance walks through.
+pub const REPLY_LIMITS: [usize; 7] = [1, 3, 5, 10, 15, 20, 25];
+
+/// The rows of the Appearance tab, top to bottom.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AppearanceRow {
+    #[default]
+    Theme,
+    CollapseNav,
+    LaneDimming,
+    ReplyPreview,
+    Ascii,
+}
+
 /// The rows of the Profile tab that take the focus, top to bottom.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ProfileRow {
@@ -57,6 +71,7 @@ pub struct SettingsState {
     pub muted: UserList,
     pub blocked: UserList,
     pub profile_row: ProfileRow,
+    pub appearance_row: AppearanceRow,
     /// The lane choice under the cursor: 0 is Auto, 1 to 6 the palette and 7 custom. `None` is the saved one.
     pub lane_cursor: Option<usize>,
     /// The hex digits typed so far while the custom color is being entered.

@@ -165,13 +165,78 @@ Web 版は、画面幅に応じて 3 カラム（xl）、2 カラム（lg）、1
 | --- | --- |
 | Nav | 上から順に、ロゴ（`/dev/null`、a social network for devs）、Log、Notifications（未読数。99 を超えたら `99+`）、Profile、Saved、Settings、`[ c  Commit ]` ボタン、最下部に `@自分` を並べます。現在の画面には `▌` を付けて、primary 色で表示します |
 | Main | 現在の画面です。枠のタイトルに画面名（`Log`、`← Commit` など）を表示します |
-| Aside | 自分のサマリー（名前、@handle と lane 色、commit 数、フォロー数とフォロワー数、bio、残りの pastel 数）と、よく使うキーのヒントを表示します。Web 版の Who to follow と Search は API がないので載せません |
-| ステータスライン | 左にパンくず（`Log > Following`）と、その画面のキーのヒントを、右に API の残り回数（`X-RateLimit-Remaining`）と接続状態を表示します |
+| Aside | 自分のサマリー（名前、@handle と lane 色、commit 数、フォロー数とフォロワー数、bio、残りの pastel 数）と、その画面のキーのヒント（Keys。[キーのヒント](#キーのヒント) を参照）を表示します。Web 版の Who to follow と Search は API がないので載せません |
+| ステータスライン | 左にパンくず（`Log > Following`）と、その画面のキーのヒント（[キーのヒント](#キーのヒント) を参照）を、右に API の残り回数（`X-RateLimit-Remaining`）と接続状態を表示します |
 | トースト | ステータスラインの上に重ねて出し、3 秒で消えます（[モーダルとオーバーレイ](#モーダルとオーバーレイ) を参照） |
 
 - **フォーカス**: フォーカスのあるペインは太線の枠（`┏━┓`）で、ないペインは細線の枠（`┌─┐`）で描きます。モーダルは二重線（`╔═╗`）です。
 - **選択中の項目**: 左端に `▌` を付け、背景をわずかに明るくします。Web 版にはホバー時のハイライトや lane dimming がありますが、マウスを前提にしているので、選択中の項目で代わりに表現します。
 - **Tab** で Nav → Main → Aside の順にフォーカスを移します。Aside は表示しているだけなので、通常は Nav と Main を行き来するだけです。
+
+### キーのヒント
+
+ステータスラインの左と Aside の Keys は、同じ表から作ります。画面ごとに別のヒントを出し、選べるものがない画面（Settings など）では `j/k move  ↵ open` を出しません。決めるのは画面とダイアログだけで、読み込み中や空の状態では変えません。例外は、ブロック中のプロフィール（`You blocked @x. [B] Unblock` を出している状態）だけです。そこでは `f` と `m` が何もしないので、`B unblock` だけを出します。
+
+**どれを出すか**（上から順に当てはめます）
+
+1. サインインのダイアログ → 2. Composer（ダイアログでもインラインでも）→ 3. 確認、通報、メニュー、キー一覧のダイアログ → 4. Settings の hex の入力欄 → 5. 画面。ダイアログと入力欄では `?` が文字なので、`? help` は出しません。
+
+**ステータスライン**（`↵` は ASCII モードで `Enter`）
+
+| 場面 | ヒント（上から優先度が高い順） |
+| --- | --- |
+| Log | `j/k move` `↵ open` `c commit` `Tab pane` `? help` |
+| Saved | `j/k move` `↵ open` `b unsave` `Tab pane` `? help` |
+| Thread | `j/k move` `↵ open` `r reply` `Esc back` `Tab pane` `? help` |
+| Profile（他人） | `j/k move` `↵ open` `1-4 tab` `f follow` `Esc back` `Tab pane` `? help` |
+| Profile（自分） | `j/k move` `↵ open` `1-4 tab` `Esc back` `Tab pane` `? help` |
+| Profile（ブロック中） | `B unblock` `Esc back` `Tab pane` `? help` |
+| Followers / Following | `j/k move` `↵ open` `1-2 tab` `f follow` `Esc back` `Tab pane` `? help` |
+| Notifications | `j/k move` `↵ open` `1-6 filter` `a all` `Tab pane` `? help` |
+| Settings の Profile | `j/k row` `h/l choose` `S sync` `D delete` `1-3 tab` `Tab pane` `? help` |
+| Settings の Appearance（ゲストも同じ） | `j/k row` `h/l change` `1-3 tab` `Tab pane` `? help` |
+| Settings の Safety | `j/k move` `u release` `R reload` `1-3 tab` `Tab pane` `? help` |
+| Settings（ゲストの Profile と Safety） | `L sign in` `1-3 tab` `Tab pane` `? help` |
+| キー一覧 | `Esc close` `Q quit` |
+| サインイン | `↵ submit` `Esc close` `^O browser` `^Y copy` `^U clear` `^R refresh` |
+| Composer | `^S send` `↵ newline` `Esc close` |
+| 削除の確認 | `y delete` `n/Esc cancel` |
+| ブロックの確認 | `y block` `n/Esc cancel` |
+| アカウント削除の確認 | `↵ delete` `Esc close` |
+| 通報 | `j/k reason` `Tab details` `↵ send` `Esc close` |
+| その他のメニュー | `j/k move` `↵ run` `Esc close` |
+| lane の hex の入力欄 | `0-9a-f type` `↵ set` `Esc cancel` |
+
+- 書式は `{パンくず}  {キー} {説明}  {キー} {説明} …` で、項目の間は空白 2 つです。パンくずはダイアログを開いても画面のままです。
+- **Wide**（120 列以上）は全部を出します。**Medium**（80〜119 列）は `Tab pane` を外し、それでも右端（API の残り回数と接続状態、ホスト名）との間に空白が 2 列以上とれなければ、最後の項目（`? help` があればその手前）から順に外します。**Narrow**（80 列未満）はパンくずと説明を省き、キーだけを空白 1 つで並べます（`Tab` は出しません）。例: `j/k ↵ r Esc ?`。
+- ASCII モードでは `↵` を `Enter` に置き換えます。
+
+**Aside の Keys**（Wide で、サインインしているときだけ。ゲストの Aside は Keys の代わりにサインインの案内です）
+
+| 場面 | 並べる組（左上から行ごとに 2 組ずつ） |
+| --- | --- |
+| Log | `j/k move` `↵ open` `c commit` `r reply` `s star` `o replies` `? all keys` |
+| Saved | `j/k move` `↵ open` `b unsave` `r reply` `s star` `o replies` `? all keys` |
+| Thread | `j/k move` `↵ open` `r reply` `q quote` `s star` `o replies` `Esc back` `? all keys` |
+| Profile（他人） | `j/k move` `↵ open` `1-4 tab` `f follow` `m mute` `B block` `Esc back` `? all keys` |
+| Profile（自分） | `j/k move` `↵ open` `1-4 tab` `s star` `Esc back` `? all keys` |
+| Profile（ブロック中） | `B unblock` `Esc back` `? all keys` |
+| Followers / Following | `j/k move` `↵ open` `1-2 tab` `f follow` `Esc back` `? all keys` |
+| Notifications | `j/k move` `↵ open` `1-6 filter` `a all` `? all keys` |
+| Settings の Profile | `j/k row` `h/l choose` `S sync` `D delete` `1-3 tab` `? all keys` |
+| Settings の Appearance | `j/k row` `h/l change` `1-3 tab` `? all keys` |
+| Settings の Safety | `j/k move` `u release` `R reload` `1-3 tab` `? all keys` |
+| ダイアログと入力欄 | ステータスラインと同じ組（`? all keys` は付けない）。サインインはゲストだけなので Keys に出ない |
+
+- 内側の幅は 30 列です。1 行に 2 組を並べ、4 行までです。各行は先頭に空白 1 つ、左の組のキーは「左の列で一番長いキーの幅 + 2」に、説明は「2 組そろった行の左の説明で一番長いものの幅 + 3」にそろえ、右の組のキーは「右の列で一番長いキーの幅 + 2」にそろえます。最後の行に 1 組だけ残ったら、左の列に置きます。
+- 例（Log）:
+
+```text
+ j/k  move     ↵  open
+ c    commit   r  reply
+ s    star     o  replies
+ ?    all keys
+```
 
 ## commit カード
 
@@ -257,7 +322,24 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 | `⚑` | `!` | 通報 | `!` |
 
 - Web 版の pastel のアイコンは 🥧 ですが、ここでは `◓` を使います。絵文字は端末によって表示幅が 1 列にも 2 列にもなり、罫線がずれる原因になるからです。
-- 罫線と記号を表示できない端末のために、設定（Appearance）で ASCII モードに切り替えられるようにします。
+- 罫線と記号を表示できない端末のために、設定（Appearance）で ASCII モードに切り替えられるようにします。置き換える範囲は [ASCII モード](#ascii-モード) にまとめます。
+
+### ASCII モード
+
+Appearance の ASCII モードをオンにすると、次の範囲の記号を ASCII に置き換えます。幅が変わらないように、1 列の記号は 1 列の文字に置き換えます（例外は、lazydn 自身が付ける切り詰めの `…` が 3 列の `...` になることと、カードの `⊡ ⚑` だけは上の表のとおり `[ ] !` と広がり、右寄せのまま左の余白で吸収します）。
+
+| 対象 | 記号 → ASCII |
+| --- | --- |
+| 一覧の縁（Log、Saved、Profile、Thread、Followers / Following） | `╎` → `:`、`┆` → `:`、`┊` → `:`、`╌` → `.`、`│` → `|`、`─` → `-` |
+| 一覧の印 | `◉` → `o`、`•` → `*`、`◌` → `o`、`○` → `o`、`·` → `-`、`↑` → `^`、`…` → `...`、`—` → `-`、`⚲ Pinned` の `⚲` → `#`、`├─` → `+-`、`└─`（枝）→ `` `- `` |
+| 選択中の印 | `▌` → `>` |
+| Notifications | `◉` → `*`、`○` → `o`、`★` → `*`、`↩` → `<`、`❝` → `"`、`✓` → `v`、`✗` → `x`、`⌄` → `v`、`⌃` → `^`、抜粋の枠 `┌┐└┘│─` → `+ + + + | -` |
+| ヒント | `↵` → `Enter`（ステータスラインと Keys） |
+
+- **切り詰めの例外**: `…` は `...`（3 列）になるので、ASCII モードで一覧の行を切り詰めるときは、先に 3 列を空けてから切って `...` を付けます（行が右の枠や時刻の列に食い込みません）。通知の要約、抜粋の枠の中、本文の 2 行目が対象です。
+- `◉` は、一覧（Log など）では `o`、Notifications では未読の印として `*` にします（Notifications の既読の `○` は `o` なので、`*` と `o` で未読を分けます）。
+- 対象外です（次のマイルストーンで扱います）: Nav のアイコン、Aside のサマリー、ペインの枠（`┏━┓` `┌─┐`）、タブの下線（`━`）、ダイアログの枠（`╔═╗`）、Settings の `●` `▌` `━` `(•)`、Profile のヘッダーの記号（`◉` `●` `⌂` `⚲` `⛓` `◓`）、ステータスラインの右端の `○` `●`、トースト。
+- **ユーザーが書いた文字は置き換えません。** commit の本文、コード、通知の抜粋、名前、bio、リンクカードは、そのまま出します。置き換えるのは、lazydn が描く飾りだけです（上の表。記号は描く場所で選び、描いたあとの行を一括で書き換えることはしません）。lazydn 自身が付ける切り詰めの `…` も、表のとおり `...` にします。
 
 ### 返信プレビュー
 
@@ -492,7 +574,7 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 | タブ | 項目 | 保存先 |
 | --- | --- | --- |
 | Profile | GitHub からの再同期（`S`）、lane 色（Auto、6 色、custom の hex）、pastéis モード、アカウントの削除（`D`） | サーバー（`PUT /v1/me/github`、`PUT /v1/me/lane`、`PUT /v1/me/pasteis-mode`、`DELETE /v1/me`） |
-| Appearance | テーマ（ダーク・ライト）、Nav の折りたたみ、lane dimming、返信プレビューの件数（1・3・5・10・15・20・25）、ASCII モード | ローカルの設定ファイル（`~/.config/lazydn/config.toml`） |
+| Appearance | テーマ（ダーク・ライト）、Nav の折りたたみ、lane dimming、返信プレビューの件数（1・3・5・10・15・20・25）、ASCII モード | ローカルの設定ファイル（`~/.config/lazydn/config.toml`。変えるたびに書き直します） |
 | Safety | ミュート中・ブロック中のユーザーの一覧と、その解除 | サーバー（`GET /v1/me/muted`、`GET /v1/me/blocked`、`DELETE /v1/users/{username}/mute|block`） |
 
 **Profile タブの操作**（フォーカスは Main にあるとき）
@@ -505,6 +587,30 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 - Pasteis mode の行では、`Enter` か `Space` でオン / オフを切り替えます（`PUT /v1/me/pasteis-mode`）。これも応答で変わり、カードのアクション行の `◓` も応答で出入りします。
 - 同じ種類の書き込み（同期、lane、pastéis モード）は、1 つずつしか飛ばしません。
 - 欄に文字を入力している間（hex の欄と、アカウントの削除の username の欄）は、`Esc` と `Enter` と `Backspace` と `Ctrl+C` 以外のキーをすべて入力として扱います。`1`〜`3` でタブは切り替わらず、`Q`、`c`、`g`、`D` も文字です。`Ctrl+C` だけが終了です。
+
+**Appearance タブの操作**（ゲストも使えます）
+
+- `j` / `k`（`↓` / `↑`）で、Theme、Collapse nav、Lane dimming、Reply previews、ASCII mode の 5 行を移ります。端で止まります。フォーカスのある行の先頭の列に `▌` を付けます。
+- `←` / `→`（`h` / `l`）、`Enter`、`Space` で、フォーカスのある行の値を変えます。値は押した瞬間に変わり（`prefs` に入り）、サーバーには何も送りません。
+  - Theme と、3 つのスイッチ（Collapse nav、Lane dimming、ASCII mode）は、どのキーでも切り替わります。
+  - Reply previews は 1・3・5・10・15・20・25 を順にたどります。`←` / `→` は端で止まり（変わらないときは保存しません）、`Enter` と `Space` は 1 つ進み、25 の次は 1 に戻ります。
+  - Nav にフォーカスがあるとき、狭い画面で `h` / `l` が Nav の操作になるときは、値を変えません。
+- **Theme、Collapse nav、Lane dimming は、保存はしますが、まだ表示には効きません。** その 3 行の値の右に `(not applied yet)` と出します（ゲストも同じ。幅が足りないときは値だけを残します）。Reply previews と ASCII mode は、すぐ表示に効きます。
+- 値が変わるたびに `Effect::SaveConfig(Prefs)` を 1 つ出します。ランタイムが `Runtime::apply` の中で、Store を通して同期的に `config.toml` へ書きます（`SaveDrafts` と同じで、順に直列で実行します）。保存するのは 5 つの値（`theme`、`collapse_nav`、`lane_dimming`、`reply_preview_limit`、`ascii`）で、`truecolor` は環境から決まるので書きません。
+- 書き方（`config::save_prefs`）:
+  1. 書く直前に `config.toml` を読み直します。ファイルが無ければ（`NotFound`）空のテーブルから始め、新しく作ります。ディレクトリは無いときだけ作り、作るディレクトリはすべて 0700 です（途中のものも含みます。既にあるディレクトリは変えません）。
+  2. `symlink_metadata` で `config.toml` が symlink なら、書きません（home-manager や stow が管理するファイルを、通常のファイルに置き換えてしまわないため）。`config.toml` を置くディレクトリそのものが symlink のときは、リンク先に書きます。
+  3. 読めない（`NotFound` 以外）、または TOML として読めないときは書きません。
+  4. 既存のテーブルの、5 つの既知のキーだけを上書きします。知らないキーと、その値は残ります。**コメントと書式は失われます。**
+  5. 一時ファイル（`.config.toml.tmp-<pid>-<連番>`、権限 0600）を `create_new` で作ります。連番は 0 から始め、その名前が既にあれば（symlink でも）次の番号に進むので、既存のファイルやリンク先は書き換えません。書いたら `sync_all` して `rename` します。失敗したら（`rename` の失敗も）一時ファイルを消します。
+  - 空の `config.toml` は空のテーブルとして扱います。UTF-8 でないファイルは「読めない」として扱います。
+  - 2 つのインスタンスが同時に書いたときは、あとに書いたほうが勝ちです（ロックはしません）。書いたあとの `config.toml` の権限は 0600 になります。
+- 書けなかったときの toast（Error）は次のとおりです。画面の値は変えたままで、次の変更でもう一度書きます。同じ文言が続くときは、重ねずに表示を延ばすだけです。
+  - TOML として読めない: `config.toml could not be parsed; settings not saved`
+  - 読めない: `config.toml could not be read; settings not saved`
+  - symlink: `config.toml is a symlink; settings not saved`
+  - ほかの入出力の失敗: `settings could not be saved (<理由>)`
+- 起動時の読み込み（`load_prefs`）は変わりません。
 
 **Safety タブの操作**
 
@@ -765,7 +871,7 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 
 ### キー一覧
 
-`?` で開きます。
+`?` で開きます。幅 60、高さ 23 です。人（`f` `m` `B`）、Settings（`S` `D` `h/l` `u`）、Notifications（`1-6` `a`）のキーも載せます。開いている間のステータスラインと Aside の Keys は、`Esc close` と `Q quit` だけです。
 
 ```text
 ╔ Keyboard shortcuts ══════════════════════════════════════╗
@@ -786,6 +892,10 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║  3 / 4   follow lists     R   refresh                    ║
 ║                           ?   this help                  ║
 ║                           Q   quit                       ║
+║                                                          ║
+║ People        f follow   m mute   B block                ║
+║ Settings      S sync   D delete   h/l change   u release ║
+║ Notifications 1-6 filter   a all / none                  ║
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -873,6 +983,7 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `←` / `→`（`h` / `l`） | lane 色の選択肢のカーソル | Settings の Profile | 追加 |
 | `Space` | pastéis モードの切り替え（`Enter` も同じ） | Settings の Profile | 追加 |
 | `u` / `Enter` | ミュート / ブロックの解除 | Settings の Safety | 追加 |
+| `j` / `k`、`←` / `→`（`h` / `l`）、`Enter`、`Space` | 行の移動と、値の変更（すぐ `config.toml` に保存） | Settings の Appearance | 追加 |
 | `L` | サインイン | ゲスト | 追加 |
 | `R` | 読み込み直す | 全体 | 追加 |
 | `Ctrl+Enter` | 投稿（端末が `Enter` と区別できるとき） | Composer | Web（`⌘↵`） |

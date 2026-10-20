@@ -188,8 +188,6 @@ pub struct LoadedConfig {
     pub warning: Option<String>,
 }
 
-const REPLY_LIMITS: [i64; 7] = [1, 3, 5, 10, 15, 20, 25];
-
 /// Reads `<config_dir>/config.toml`. A missing file gives the defaults and creates nothing;
 /// each field that is absent, mistyped or out of range falls back alone.
 pub fn load_prefs(config_dir: &Path) -> LoadedConfig {
@@ -227,7 +225,9 @@ pub fn load_prefs(config_dir: &Path) -> LoadedConfig {
     }
     match table.get("reply_preview_limit") {
         None => {}
-        Some(toml::Value::Integer(n)) if REPLY_LIMITS.contains(n) => {
+        Some(toml::Value::Integer(n))
+            if usize::try_from(*n).is_ok_and(|n| crate::settings::REPLY_LIMITS.contains(&n)) =>
+        {
             prefs.reply_preview_limit = *n as usize;
         }
         Some(_) => bad.push("reply_preview_limit"),
@@ -301,4 +301,106 @@ fn write_synced(path: &Path, text: &str) -> io::Result<()> {
     let mut file = std::fs::File::create(path)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()
+}
+
+const PARSE_TEXT: &str = "config.toml could not be parsed; settings not saved";
+const READ_TEXT: &str = "config.toml could not be read; settings not saved";
+const SYMLINK_TEXT: &str = "config.toml is a symlink; settings not saved";
+
+fn write_error(e: impl std::fmt::Display) -> String {
+    format!("settings could not be saved ({e})")
+}
+
+/// Writes the Appearance values into `<config_dir>/config.toml`; the error is the text for the toast.
+///
+/// The file is read again first and only the five known keys are replaced, so that keys of a newer version survive.
+/// A symlinked, unreadable or unparsable file is left alone. Why not write through a symlink: the file may belong
+/// to a tool such as home-manager, which a plain file would silently replace.
+pub fn save_prefs(config_dir: &Path, prefs: &Prefs) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
+    let path = config_dir.join("config.toml");
+    let mut table = toml::Table::new();
+    let mut make_dir = false;
+    match std::fs::metadata(config_dir) {
+        Ok(m) if m.is_dir() => {
+            match std::fs::symlink_metadata(&path) {
+                Ok(m) if m.file_type().is_symlink() => return Err(SYMLINK_TEXT.into()),
+                Ok(_) => {}
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(_) => return Err(READ_TEXT.into()),
+            }
+            match std::fs::read_to_string(&path) {
+                Ok(text) => {
+                    table = text
+                        .parse::<toml::Table>()
+                        .map_err(|_| PARSE_TEXT.to_string())?;
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(_) => return Err(READ_TEXT.into()),
+            }
+        }
+        Ok(_) => return Err(write_error("not a directory")),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => make_dir = true,
+        Err(e) => return Err(write_error(e)),
+    }
+
+    table.insert(
+        "theme".into(),
+        toml::Value::String(
+            match prefs.theme {
+                Theme::Dark => "dark",
+                Theme::Light => "light",
+            }
+            .into(),
+        ),
+    );
+    table.insert(
+        "collapse_nav".into(),
+        toml::Value::Boolean(prefs.collapse_nav),
+    );
+    table.insert(
+        "lane_dimming".into(),
+        toml::Value::Boolean(prefs.lane_dimming),
+    );
+    table.insert(
+        "reply_preview_limit".into(),
+        toml::Value::Integer(prefs.reply_preview_limit as i64),
+    );
+    table.insert("ascii".into(), toml::Value::Boolean(prefs.ascii));
+    let text = toml::to_string(&table).map_err(write_error)?;
+
+    if make_dir {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(config_dir)
+            .map_err(write_error)?;
+    }
+    let pid = std::process::id();
+    let mut n = 0u32;
+    let (tmp, mut file) = loop {
+        let tmp = config_dir.join(format!(".config.toml.tmp-{pid}-{n}"));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp)
+        {
+            Ok(file) => break (tmp, file),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists && n < 1000 => n += 1,
+            Err(e) => return Err(write_error(e)),
+        }
+    };
+    use std::io::Write;
+    // Synced first so that a crash after the rename cannot leave an empty config.toml.
+    let written = file
+        .write_all(text.as_bytes())
+        .and_then(|()| file.sync_all())
+        .and_then(|()| std::fs::rename(&tmp, &path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(write_error(e));
+    }
+    Ok(())
 }

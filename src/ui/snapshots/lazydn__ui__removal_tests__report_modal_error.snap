@@ -25,4 +25,4 @@ expression: terminal.backend()
 "┃ ◉ Carol @carol · 1m                              00000c2 ┃"
 "┃ │ body of c2                                             ┃"
 "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
-" j/k ↵ c ?                                              -/- "
+" j/k Tab ↵ Esc                                          -/- "

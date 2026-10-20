@@ -25,4 +25,4 @@ expression: terminal.backend()
 "│  │┃                                                                          ┃"
 "│  │┃                                                                          ┃"
 "└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
-" Profile > Following  j/k move  ↵ open  c commit  ? help                    -/- "
+" Profile > Following  j/k move  ↵ open  1-2 tab  f follow  ? help           -/- "

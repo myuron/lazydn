@@ -114,3 +114,31 @@ pub fn row_text(buffer: &Buffer, y: u16) -> String {
         .map(|x| buffer[(x, y)].symbol())
         .collect()
 }
+
+/// The cells in `x0..x1` by `y0..y1` that hold anything but ASCII, as `x,y:symbol`.
+pub fn non_ascii_cells(
+    terminal: &Terminal<TestBackend>,
+    (x0, x1): (u16, u16),
+    (y0, y1): (u16, u16),
+) -> Vec<String> {
+    let buffer = terminal.backend().buffer();
+    let mut found = Vec::new();
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let symbol = buffer[(x, y)].symbol();
+            if !symbol.is_ascii() {
+                found.push(format!("{x},{y}:{symbol}"));
+            }
+        }
+    }
+    found
+}
+
+/// `app` with the ASCII mode on.
+pub fn with_ascii(mut app: App) -> App {
+    app.set_prefs(crate::app::Prefs {
+        ascii: true,
+        ..crate::app::Prefs::default()
+    });
+    app
+}

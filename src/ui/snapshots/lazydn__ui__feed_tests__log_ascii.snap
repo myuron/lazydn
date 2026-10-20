@@ -1,0 +1,28 @@
+---
+source: src/ui/feed_tests.rs
+expression: terminal.backend()
+---
+"┌──┐┏ Log ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"│  │┃        Following                 Latest                 Trending         ┃"
+"│▌◉│┃        ━━━━━━━━━                                                         ┃"
+"│ ◎│┃ :                                                                        ┃"
+"│ ◯│┃ o  What did you ship?                                                    ┃"
+"│ ⊡│┃ :                                    [c] Write a commit                  ┃"
+"│ ⚙│┃ :                                                                        ┃"
+"│  │┃                             ^ 3 new commits                              ┃"
+"│ +│┃ : -- Today ------------------------------------------------------------- ┃"
+"│  │┃ |                                                                        ┃"
+"│  │┃>o Alice @alice - 3m                                              h000000 ┃"
+"│  │┃>| commit 0                                                               ┃"
+"│  │┃>| * 1  p 0  " Quote  < Reply                                       [ ] ! ┃"
+"│  │┃ |                                                                        ┃"
+"│  │┃ * Alice                                                          h000001 ┃"
+"│  │┃ | commit 1                                                               ┃"
+"│  │┃ | * 1  p 0  " Quote  < Reply                                       [ ] ! ┃"
+"│  │┃ .. HEAD@{last visit} ................................................... ┃"
+"│  │┃ |                                                                        ┃"
+"│  │┃ o Bob @bob - 25m                                                 h000002 ┃"
+"│  │┃ | commit 2                                                               ┃"
+"│  │┃ | * 1  p 0  " Quote  < Reply                                       [ ] ! ┃"
+"└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" Log > Following  j/k move  Enter open  c commit  ? help                    -/- "

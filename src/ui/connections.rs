@@ -3,6 +3,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, ConnTab};
 use crate::feed::LoadState;
+use crate::ui::ascii::pick;
 use crate::ui::card::apply_selection;
 use crate::ui::feed::{CardSpan, plain, render_ctx, retry_hint, truncate};
 
@@ -28,9 +29,12 @@ pub fn rows(app: &App, username: &str, tab: ConnTab, width: u16) -> ConnectionRo
 
     if state.users.is_empty() {
         if state.pending.is_some() {
-            out.lines.push(plain(" ┊ (loading...)", w));
+            out.lines.push(plain(
+                &format!(" {} (loading...)", pick(ctx.ascii, "┊", ":")),
+                w,
+            ));
         } else if let LoadState::Failed { code, .. } = &state.load {
-            out.lines.push(retry_hint(code, w));
+            out.lines.push(retry_hint(code, w, ctx.ascii));
         } else if state.loaded_once {
             out.lines.push(plain(
                 match tab {
@@ -45,7 +49,7 @@ pub fn rows(app: &App, username: &str, tab: ConnTab, width: u16) -> ConnectionRo
 
     for (i, user) in state.users.iter().enumerate() {
         let name = user.name.as_deref().unwrap_or(&user.username);
-        let mut left = format!("◉ {name} @{}", user.username);
+        let mut left = format!("{} {name} @{}", pick(ctx.ascii, "◉", "o"), user.username);
         if signed && user.follows_you == Some(true) {
             left.push_str("  [Follows you]");
         }
@@ -89,9 +93,12 @@ pub fn rows(app: &App, username: &str, tab: ConnTab, width: u16) -> ConnectionRo
     }
 
     if state.pending.as_ref().is_some_and(|p| p.append) {
-        out.lines.push(plain(" ┊ (loading more...)", w));
+        out.lines.push(plain(
+            &format!(" {} (loading more...)", pick(ctx.ascii, "┊", ":")),
+            w,
+        ));
     } else if let LoadState::Failed { code, append: true } = &state.load {
-        out.lines.push(retry_hint(code, w));
+        out.lines.push(retry_hint(code, w, ctx.ascii));
     }
     out
 }

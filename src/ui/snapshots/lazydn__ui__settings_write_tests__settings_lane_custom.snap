@@ -25,4 +25,4 @@ expression: terminal.backend()
 "│  │┃                                                                          ┃"
 "│  │┃                                                                          ┃"
 "└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
-" Settings  j/k move  ↵ open  c commit  ? help                               -/- "
+" Settings  0-9a-f type  ↵ set  Esc cancel                                   -/- "

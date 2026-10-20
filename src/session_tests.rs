@@ -763,3 +763,34 @@ fn the_aside_says_what_the_session_is_doing() {
     });
     assert!(aside(&app).contains("offline — retrying"));
 }
+
+// --- ASCII mode ---------------------------------------------------------------------------------
+
+#[test]
+fn the_restoring_line_is_ascii_in_ascii_mode() {
+    let (app, _) = restoring(120, 40);
+    let app = with_ascii(app);
+    let terminal = render(&app);
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (3, 38)),
+        Vec::<String>::new()
+    );
+    assert!(main_text(&app).contains("restoring session..."));
+}
+
+#[test]
+fn the_offline_line_is_ascii_in_ascii_mode() {
+    let (mut app, init) = restoring(120, 40);
+    me_failed(&mut app, &init, "network");
+    app.update(Action::ApiStatus {
+        rate: None,
+        online: false,
+    });
+    let app = with_ascii(app);
+    let terminal = render(&app);
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (3, 38)),
+        Vec::<String>::new()
+    );
+    assert!(main_text(&app).contains("offline - retrying"));
+}

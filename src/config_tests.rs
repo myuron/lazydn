@@ -6,7 +6,7 @@ use std::ffi::OsString;
 
 use crate::config::{
     BaseUrl, ConfigError, Env, LastVisits, base_url, config_dir, is_truecolor, key_path,
-    load_last_visits, load_prefs, save_last_visits, state_dir,
+    load_last_visits, load_prefs, save_last_visits, save_prefs, state_dir,
 };
 
 fn p(path: &str) -> Option<PathBuf> {
@@ -674,4 +674,315 @@ fn a_relative_home_is_ignored() {
     };
     assert_eq!(config_dir(&env), Err(ConfigError::NoHome));
     assert_eq!(state_dir(&env), Err(ConfigError::NoHome));
+}
+
+// --- saving the Appearance settings ------------------------------------------
+
+mod save {
+    use std::os::unix::fs::PermissionsExt;
+
+    use super::*;
+
+    const PARSE_TEXT: &str = "config.toml could not be parsed; settings not saved";
+    const READ_TEXT: &str = "config.toml could not be read; settings not saved";
+    const SYMLINK_TEXT: &str = "config.toml is a symlink; settings not saved";
+
+    fn changed() -> Prefs {
+        Prefs {
+            theme: Theme::Light,
+            collapse_nav: true,
+            lane_dimming: true,
+            reply_preview_limit: 15,
+            ascii: true,
+            ..Prefs::default()
+        }
+    }
+
+    fn mode(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    fn table_of(dir: &Path) -> toml::Table {
+        std::fs::read_to_string(dir.join("config.toml"))
+            .unwrap()
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn the_five_values_are_written_and_read_back_by_load_prefs() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(save_prefs(dir.path(), &changed()), Ok(()));
+
+        let table = table_of(dir.path());
+        assert_eq!(table["theme"].as_str(), Some("light"));
+        assert_eq!(table["collapse_nav"].as_bool(), Some(true));
+        assert_eq!(table["lane_dimming"].as_bool(), Some(true));
+        assert_eq!(table["reply_preview_limit"].as_integer(), Some(15));
+        assert_eq!(table["ascii"].as_bool(), Some(true));
+        let loaded = load_prefs(dir.path());
+        assert_eq!(loaded.warning, None);
+        assert_eq!(loaded.prefs, changed());
+    }
+
+    #[test]
+    fn the_runtime_only_truecolor_is_not_written() {
+        let dir = tempfile::tempdir().unwrap();
+
+        save_prefs(
+            dir.path(),
+            &Prefs {
+                truecolor: false,
+                ..changed()
+            },
+        )
+        .unwrap();
+
+        assert!(!table_of(dir.path()).contains_key("truecolor"));
+    }
+
+    #[test]
+    fn a_missing_file_is_created_with_mode_0600() {
+        let dir = tempfile::tempdir().unwrap();
+
+        save_prefs(dir.path(), &changed()).unwrap();
+
+        assert_eq!(mode(&dir.path().join("config.toml")), 0o600);
+        assert_eq!(names_in(dir.path()), vec!["config.toml"]);
+    }
+
+    #[test]
+    fn a_missing_directory_is_created_with_mode_0700() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("nested").join("lazydn");
+
+        save_prefs(&config, &changed()).unwrap();
+
+        assert_eq!(mode(&config), 0o700);
+        assert_eq!(mode(&config.join("config.toml")), 0o600);
+    }
+
+    #[test]
+    fn an_existing_directory_keeps_its_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        save_prefs(dir.path(), &changed()).unwrap();
+
+        assert_eq!(mode(dir.path()), 0o755);
+        assert!(dir.path().join("config.toml").is_file());
+    }
+
+    #[test]
+    fn an_existing_file_becomes_0600() {
+        let dir = config_with("ascii = false\n");
+        let path = dir.path().join("config.toml");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        save_prefs(dir.path(), &changed()).unwrap();
+
+        assert_eq!(mode(&path), 0o600);
+    }
+
+    #[test]
+    fn keys_that_are_not_ours_survive_with_their_values() {
+        let dir = config_with(
+            "future_option = 1\ntruecolor = false\ntheme = \"dark\"\n[extra]\nname = \"kept\"\n",
+        );
+
+        save_prefs(dir.path(), &changed()).unwrap();
+
+        let table = table_of(dir.path());
+        assert_eq!(table["future_option"].as_integer(), Some(1));
+        assert_eq!(table["truecolor"].as_bool(), Some(false));
+        assert_eq!(table["extra"]["name"].as_str(), Some("kept"));
+        assert_eq!(table["theme"].as_str(), Some("light"));
+    }
+
+    #[test]
+    fn a_mistyped_known_key_is_overwritten_with_the_value() {
+        let dir = config_with("collapse_nav = \"yes\"\nreply_preview_limit = 99\n");
+
+        save_prefs(dir.path(), &changed()).unwrap();
+
+        let table = table_of(dir.path());
+        assert_eq!(table["collapse_nav"].as_bool(), Some(true));
+        assert_eq!(table["reply_preview_limit"].as_integer(), Some(15));
+    }
+
+    #[test]
+    fn the_file_is_read_again_at_every_save() {
+        let dir = config_with("first = 1\n");
+        save_prefs(dir.path(), &Prefs::default()).unwrap();
+        let path = dir.path().join("config.toml");
+        let mut text = std::fs::read_to_string(&path).unwrap();
+        text.push_str("added_by_hand = 2\n");
+        std::fs::write(&path, text).unwrap();
+
+        save_prefs(dir.path(), &changed()).unwrap();
+
+        let table = table_of(dir.path());
+        assert_eq!(table["first"].as_integer(), Some(1));
+        assert_eq!(table["added_by_hand"].as_integer(), Some(2));
+        assert_eq!(table["theme"].as_str(), Some("light"));
+    }
+
+    #[test]
+    fn no_temporary_file_is_left_behind() {
+        let dir = config_with("a = 1\n");
+
+        save_prefs(dir.path(), &changed()).unwrap();
+        save_prefs(dir.path(), &Prefs::default()).unwrap();
+
+        assert_eq!(names_in(dir.path()), vec!["config.toml"]);
+        assert_eq!(load_prefs(dir.path()).prefs, Prefs::default());
+        assert_eq!(table_of(dir.path())["a"].as_integer(), Some(1));
+    }
+
+    #[test]
+    fn a_file_that_does_not_parse_is_refused_and_left_as_it_was() {
+        let dir = config_with("theme = [unclosed\n");
+
+        assert_eq!(
+            save_prefs(dir.path(), &changed()),
+            Err(PARSE_TEXT.to_string())
+        );
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("config.toml")).unwrap(),
+            "theme = [unclosed\n"
+        );
+        assert_eq!(names_in(dir.path()), vec!["config.toml"]);
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_refused_and_left_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("config.toml")).unwrap();
+
+        assert_eq!(
+            save_prefs(dir.path(), &changed()),
+            Err(READ_TEXT.to_string())
+        );
+
+        assert!(dir.path().join("config.toml").is_dir());
+    }
+
+    #[test]
+    fn a_symlinked_file_is_refused_and_neither_link_nor_target_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let managed = tempfile::tempdir().unwrap();
+        let target = managed.path().join("real.toml");
+        std::fs::write(&target, "ascii = false\n").unwrap();
+        let link = dir.path().join("config.toml");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert_eq!(
+            save_prefs(dir.path(), &changed()),
+            Err(SYMLINK_TEXT.to_string())
+        );
+
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "ascii = false\n");
+        assert_eq!(names_in(dir.path()), vec!["config.toml"]);
+    }
+
+    #[test]
+    fn a_dangling_symlink_is_refused_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("config.toml");
+        std::os::unix::fs::symlink(dir.path().join("nowhere.toml"), &link).unwrap();
+
+        assert_eq!(
+            save_prefs(dir.path(), &changed()),
+            Err(SYMLINK_TEXT.to_string())
+        );
+
+        assert!(!dir.path().join("nowhere.toml").exists());
+    }
+
+    #[test]
+    fn a_symlinked_directory_is_written_through() {
+        let real = tempfile::tempdir().unwrap();
+        let holder = tempfile::tempdir().unwrap();
+        let link = holder.path().join("lazydn");
+        std::os::unix::fs::symlink(real.path(), &link).unwrap();
+
+        assert_eq!(save_prefs(&link, &changed()), Ok(()));
+
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(load_prefs(real.path()).prefs, changed());
+    }
+
+    #[test]
+    fn a_directory_that_cannot_be_made_gives_a_write_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("lazydn");
+        std::fs::write(&blocker, "a file").unwrap();
+
+        let error = save_prefs(&blocker.join("inner"), &changed()).unwrap_err();
+
+        assert!(
+            error.starts_with("settings could not be saved ("),
+            "{error}"
+        );
+        assert_eq!(std::fs::read_to_string(&blocker).unwrap(), "a file");
+    }
+
+    #[test]
+    fn an_empty_file_is_written_as_an_empty_table_would_be() {
+        let dir = config_with("");
+
+        assert_eq!(save_prefs(dir.path(), &changed()), Ok(()));
+
+        assert_eq!(load_prefs(dir.path()).prefs, changed());
+        assert_eq!(table_of(dir.path()).len(), 5);
+    }
+
+    #[test]
+    fn a_file_that_is_not_utf8_counts_as_unreadable_and_is_left_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, [0x74, 0x3d, 0xff, 0xfe, 0x0a]).unwrap();
+
+        assert_eq!(
+            save_prefs(dir.path(), &changed()),
+            Err(READ_TEXT.to_string())
+        );
+
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            vec![0x74, 0x3d, 0xff, 0xfe, 0x0a]
+        );
+    }
+
+    #[test]
+    fn temporary_names_that_are_taken_are_skipped_and_what_they_point_at_is_not_touched() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let victim = outside.path().join("victim");
+        std::fs::write(&victim, "precious").unwrap();
+        let name = |n: u32| {
+            dir.path()
+                .join(format!(".config.toml.tmp-{}-{n}", std::process::id()))
+        };
+        std::os::unix::fs::symlink(&victim, name(0)).unwrap();
+        std::fs::write(name(1), "taken").unwrap();
+        std::os::unix::fs::symlink(outside.path().join("nowhere"), name(2)).unwrap();
+        std::os::unix::fs::symlink(&victim, name(3)).unwrap();
+
+        assert_eq!(save_prefs(dir.path(), &changed()), Ok(()));
+
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "precious");
+        assert_eq!(std::fs::read_to_string(name(1)).unwrap(), "taken");
+        assert!(!outside.path().join("nowhere").exists());
+        assert_eq!(load_prefs(dir.path()).prefs, changed());
+        assert!(
+            std::fs::symlink_metadata(dir.path().join("config.toml"))
+                .unwrap()
+                .file_type()
+                .is_file()
+        );
+    }
 }

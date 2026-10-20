@@ -7,9 +7,6 @@ use ratatui::widgets::{Block, Paragraph};
 use crate::app::{App, ConnState, Me, Session};
 use crate::ui::theme;
 
-const KEYS: &str =
-    " j/k  move     ↵  open\n c    commit   r  reply\n s    star     o  replies\n ?    all keys";
-
 fn boxed(
     frame: &mut Frame,
     area: Rect,
@@ -78,7 +75,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
                 "Me",
                 me_text(me, app.prefs().truecolor),
             );
-            boxed(frame, area, &mut y, 6, "Keys", KEYS);
+            let keys = crate::ui::hints::keys_rows(app)
+                .unwrap_or_default()
+                .join("\n");
+            boxed(frame, area, &mut y, 6, "Keys", keys);
         }
     }
 }

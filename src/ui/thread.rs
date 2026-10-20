@@ -99,7 +99,10 @@ impl Painter<'_> {
                 self.ctx.truecolor,
             ))
         });
-        Line::from(vec![Span::raw(" "), Span::styled("│", style)])
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled(crate::ui::ascii::pick(self.ctx.ascii, "│", "|"), style),
+        ])
     }
 
     fn commit_card(&self, c: &Commit, opts: CardOptions, prefix: &Prefix) -> Vec<Line<'static>> {
@@ -220,8 +223,9 @@ impl Painter<'_> {
                 retry_key,
             } => {
                 let body = format!(
-                    "{}error: {code} — press {retry_key} to retry",
-                    guides(lasts, &self.ctx)
+                    "{}error: {code} {} press {retry_key} to retry",
+                    guides(lasts, &self.ctx),
+                    crate::ui::ascii::pick(self.ctx.ascii, "—", "-")
                 );
                 Drawn::Plain(vec![Line::from(vec![
                     Span::raw(" "),
@@ -229,7 +233,10 @@ impl Painter<'_> {
                 ])])
             }
             SlotKind::SignIn => Drawn::Plain(vec![plain(
-                " ┊ sign in to see replies",
+                &format!(
+                    " {} sign in to see replies",
+                    crate::ui::ascii::pick(self.ctx.ascii, "┊", ":")
+                ),
                 self.width.saturating_sub(1),
             )]),
         }
@@ -312,7 +319,11 @@ fn header(id: &str, width: usize, linkable: bool) -> Line<'static> {
     Line::raw(format!("{}{text}", " ".repeat(pad)))
 }
 
-fn status_line(state: &ThreadState, id: &str, width: usize) -> Line<'static> {
+fn status_line(state: &ThreadState, id: &str, width: usize, ascii: bool) -> Line<'static> {
+    let (dots, dash) = (
+        crate::ui::ascii::pick(ascii, "┊", ":"),
+        crate::ui::ascii::pick(ascii, "—", "-"),
+    );
     let width = width.saturating_sub(1);
     match &state.main_load {
         LoadState::Failed { code, .. } if code == "commit_unavailable" || code == "http_404" => {
@@ -322,9 +333,9 @@ fn status_line(state: &ThreadState, id: &str, width: usize) -> Line<'static> {
             )
         }
         LoadState::Failed { code, .. } => {
-            plain(&format!(" error: {code} — press R to retry"), width)
+            plain(&format!(" error: {code} {dash} press R to retry"), width)
         }
-        LoadState::Idle => plain(" ┊ (loading...)", width),
+        LoadState::Idle => plain(&format!(" {dots} (loading...)"), width),
     }
 }
 
@@ -332,7 +343,13 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
     let width = usize::from(width);
     let Some(state) = app.thread(id) else {
         return ThreadRows {
-            lines: vec![plain(" ┊ (loading...)", width)],
+            lines: vec![plain(
+                &format!(
+                    " {} (loading...)",
+                    crate::ui::ascii::pick(app.prefs().ascii, "┊", ":")
+                ),
+                width,
+            )],
             ..ThreadRows::default()
         };
     };
@@ -340,7 +357,7 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
         Some(main) if !state.main_failed() => main,
         _ => {
             return ThreadRows {
-                lines: vec![status_line(state, id, width)],
+                lines: vec![status_line(state, id, width, app.prefs().ascii)],
                 ..ThreadRows::default()
             };
         }

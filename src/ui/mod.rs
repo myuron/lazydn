@@ -1,3 +1,4 @@
+pub mod ascii;
 pub mod aside;
 pub mod card;
 pub mod compose;
@@ -5,6 +6,7 @@ pub mod connections;
 pub mod dialogs;
 pub mod feed;
 pub mod help;
+pub mod hints;
 pub mod layout;
 pub mod nav;
 pub mod notifications;
@@ -92,6 +94,8 @@ mod compose_tests;
 mod feed_tests;
 #[cfg(test)]
 mod follow_tests;
+#[cfg(test)]
+mod hints_tests;
 #[cfg(test)]
 mod menu_tests;
 #[cfg(test)]

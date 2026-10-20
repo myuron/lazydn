@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use super::people::UserWriteKind;
 use super::toast;
 use super::writes::write_failure_text;
-use super::{App, Me, Modal, Session, SettingsTab, ToastKind};
+use super::{App, Me, Modal, Session, SettingsTab, Theme, ToastKind};
 use crate::action::{Effect, Failure, MeWrite};
 use crate::dialogs::AccountDelete;
 use crate::feed::ReqId;
 use crate::keymap::SettingsText;
 use crate::model::{LaneSetting, MeResponse, User};
 use crate::settings::{
-    CUSTOM_CHOICE, HEX_DIGITS, LANE_CHOICES, ProfileRow, parse_hex_color, safety_layout,
-    saved_lane_choice,
+    AppearanceRow, CUSTOM_CHOICE, HEX_DIGITS, LANE_CHOICES, ProfileRow, REPLY_LIMITS,
+    parse_hex_color, safety_layout, saved_lane_choice,
 };
 
 const ROWS: [ProfileRow; 4] = [
@@ -19,6 +19,13 @@ const ROWS: [ProfileRow; 4] = [
     ProfileRow::Lane,
     ProfileRow::Pasteis,
     ProfileRow::Delete,
+];
+const APPEARANCE_ROWS: [AppearanceRow; 5] = [
+    AppearanceRow::Theme,
+    AppearanceRow::CollapseNav,
+    AppearanceRow::LaneDimming,
+    AppearanceRow::ReplyPreview,
+    AppearanceRow::Ascii,
 ];
 const USERNAME_MAX: usize = 64;
 const SYNC_RATE_TEXT: &str = "You just synced. Try again in a minute.";
@@ -114,7 +121,16 @@ impl App {
                 let at = self.settings.safety_selected;
                 self.settings_select(at.saturating_add_signed(step as isize));
             }
-            SettingsTab::Appearance => {}
+            SettingsTab::Appearance => {
+                let at = APPEARANCE_ROWS
+                    .iter()
+                    .position(|r| *r == self.settings.appearance_row)
+                    .unwrap_or(0);
+                let next = at
+                    .saturating_add_signed(step as isize)
+                    .min(APPEARANCE_ROWS.len() - 1);
+                self.settings.appearance_row = APPEARANCE_ROWS[next];
+            }
         }
     }
 
@@ -152,7 +168,15 @@ impl App {
         self.settings.safety_scroll = u16::try_from(scroll).unwrap_or(u16::MAX);
     }
 
-    pub(super) fn settings_step(&mut self, step: i8) {
+    pub(super) fn settings_step(&mut self, step: i8) -> Vec<Effect> {
+        if self.on_settings() && self.settings.tab == SettingsTab::Appearance {
+            return self.appearance_change(Some(step));
+        }
+        self.lane_step(step);
+        Vec::new()
+    }
+
+    fn lane_step(&mut self, step: i8) {
         if !self.on_settings()
             || self.settings.tab != SettingsTab::Profile
             || self.settings.profile_row != ProfileRow::Lane
@@ -182,11 +206,48 @@ impl App {
                 ProfileRow::Delete => self.open_account_delete(),
             },
             SettingsTab::Safety => self.release_selected(),
-            SettingsTab::Appearance => Vec::new(),
+            SettingsTab::Appearance => self.appearance_change(None),
         }
     }
 
+    /// Changes the focused row and asks for the save; `step` is none for `Enter` and `Space`, which wrap round.
+    fn appearance_change(&mut self, step: Option<i8>) -> Vec<Effect> {
+        let before = self.prefs.clone();
+        let prefs = &mut self.prefs;
+        match self.settings.appearance_row {
+            AppearanceRow::Theme => {
+                prefs.theme = match prefs.theme {
+                    Theme::Dark => Theme::Light,
+                    Theme::Light => Theme::Dark,
+                };
+            }
+            AppearanceRow::CollapseNav => prefs.collapse_nav = !prefs.collapse_nav,
+            AppearanceRow::LaneDimming => prefs.lane_dimming = !prefs.lane_dimming,
+            AppearanceRow::Ascii => prefs.ascii = !prefs.ascii,
+            AppearanceRow::ReplyPreview => {
+                let at = REPLY_LIMITS
+                    .iter()
+                    .position(|l| *l == prefs.reply_preview_limit)
+                    .unwrap_or(1);
+                let next = match step {
+                    Some(n) => at
+                        .saturating_add_signed(isize::from(n))
+                        .min(REPLY_LIMITS.len() - 1),
+                    None => (at + 1) % REPLY_LIMITS.len(),
+                };
+                prefs.reply_preview_limit = REPLY_LIMITS[next];
+            }
+        }
+        if self.prefs == before {
+            return Vec::new();
+        }
+        vec![Effect::SaveConfig(self.prefs.clone())]
+    }
+
     pub(super) fn guarded_settings_toggle(&mut self) -> Vec<Effect> {
+        if self.on_settings() && self.settings.tab == SettingsTab::Appearance {
+            return self.appearance_change(None);
+        }
         if self.on_settings()
             && self.settings.tab == SettingsTab::Profile
             && self.settings.profile_row == ProfileRow::Pasteis

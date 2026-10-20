@@ -7,6 +7,7 @@ use crate::feed::LoadState;
 use crate::model::{Notification, NotificationType, ThreadItem, User};
 use crate::notifications::{Filter, Filters, GroupList};
 use crate::timefmt::{day_label, relative};
+use crate::ui::ascii::pick;
 use crate::ui::card::{clean, clean_inline};
 use crate::ui::feed::{CardSpan, center_offset, plain, retry_hint, rule, truncate};
 use crate::ui::theme;
@@ -29,11 +30,15 @@ fn pad_to(text: &str, width: usize) -> String {
 }
 
 /// Cuts by display width and marks the cut, unlike `truncate`, so that a clipped sentence is visible.
-fn fit(text: &str, avail: usize) -> String {
+fn fit(text: &str, avail: usize, ascii: bool) -> String {
     if text.width() <= avail {
         text.to_string()
     } else if avail == 0 {
         String::new()
+    } else if ascii {
+        // Three columns are kept free for the dots, which are wider than the single glyph.
+        let dots = avail.min(3);
+        format!("{}{}", truncate(text, avail - dots), ".".repeat(dots))
     } else {
         format!("{}…", truncate(text, avail - 1))
     }
@@ -66,7 +71,19 @@ pub fn filter_rows(filters: &Filters, width: u16) -> Vec<Line<'static>> {
         .collect()
 }
 
-fn glyph(kind: NotificationType) -> &'static str {
+fn glyph(kind: NotificationType, ascii: bool) -> &'static str {
+    if ascii {
+        return match kind {
+            NotificationType::Starred => "*",
+            NotificationType::Replied => "<",
+            NotificationType::Quoted => "\"",
+            NotificationType::Mentioned => "@",
+            NotificationType::Followed => "+",
+            NotificationType::Approved => "v",
+            NotificationType::Rejected => "x",
+            NotificationType::Unknown => "?",
+        };
+    }
     match kind {
         NotificationType::Starred => "★",
         NotificationType::Replied => "↩",
@@ -144,12 +161,14 @@ fn is_new(n: &Notification, state_read_at: Option<time::OffsetDateTime>) -> bool
 struct Ctx {
     limit: usize,
     truecolor: bool,
+    ascii: bool,
 }
 
 impl Ctx {
     /// The rail and indent that start every row under a headline.
     fn sub(&self, rail: Style, content: Vec<Span<'static>>) -> Line<'static> {
-        let mut spans = vec![Span::raw(" "), Span::styled("│", rail), Span::raw("    ")];
+        let bar = if self.ascii { "|" } else { "│" };
+        let mut spans = vec![Span::raw(" "), Span::styled(bar, rail), Span::raw("    ")];
         spans.extend(content);
         Line::from(spans)
     }
@@ -159,12 +178,12 @@ impl Ctx {
     }
 
     fn text_row(&self, rail: Style, text: &str) -> Line<'static> {
-        self.sub(rail, vec![Span::raw(fit(text, self.avail()))])
+        self.sub(rail, vec![Span::raw(fit(text, self.avail(), self.ascii))])
     }
 
     fn timed_row(&self, rail: Style, text: &str, time: &str) -> Line<'static> {
         let t = time.width();
-        let text = fit(text, self.avail().saturating_sub(t + 1));
+        let text = fit(text, self.avail().saturating_sub(t + 1), self.ascii);
         let gap = self.avail().saturating_sub(text.width() + t);
         self.sub(
             rail,
@@ -178,12 +197,22 @@ impl Ctx {
             return Vec::new();
         }
         let inner = box_w - 4;
-        let text = pad_to(&fit(&clean_inline(body), inner), inner);
-        let bar = "─".repeat(box_w - 2);
+        let text = pad_to(&fit(&clean_inline(body), inner, self.ascii), inner);
+        let (corner, side, dash) = if self.ascii {
+            ("+", "|", "-")
+        } else {
+            ("", "│", "─")
+        };
+        let bar = dash.repeat(box_w - 2);
+        let (tl, tr, bl, br) = if self.ascii {
+            (corner, corner, corner, corner)
+        } else {
+            ("┌", "┐", "└", "┘")
+        };
         vec![
-            self.sub(rail, vec![Span::raw(format!("┌{bar}┐"))]),
-            self.sub(rail, vec![Span::raw(format!("│ {text} │"))]),
-            self.sub(rail, vec![Span::raw(format!("└{bar}┘"))]),
+            self.sub(rail, vec![Span::raw(format!("{tl}{bar}{tr}"))]),
+            self.sub(rail, vec![Span::raw(format!("{side} {text} {side}"))]),
+            self.sub(rail, vec![Span::raw(format!("{bl}{bar}{br}"))]),
         ]
     }
 
@@ -198,7 +227,11 @@ impl Ctx {
             .iter()
             .enumerate()
             .map(|(i, l)| {
-                let text = if more && i == last {
+                let text = if more && i == last && self.ascii {
+                    // The dots take three columns, so the line is cut before they are added.
+                    let room = self.avail().saturating_sub(3);
+                    format!("{}...", truncate(l, room))
+                } else if more && i == last {
                     format!("{l}…")
                 } else {
                     (*l).to_string()
@@ -218,7 +251,12 @@ impl Ctx {
         offset: time::UtcOffset,
     ) -> Vec<Line<'static>> {
         let word = noun(n.kind);
-        let mark = if open { '⌃' } else { '⌄' };
+        let mark = match (open, self.ascii) {
+            (true, false) => '⌃',
+            (false, false) => '⌄',
+            (true, true) => '^',
+            (false, true) => 'v',
+        };
         let mut out = vec![self.text_row(rail, &format!("{mark} {} {word}", n.event_count))];
         if !open {
             return out;
@@ -227,7 +265,10 @@ impl Ctx {
             return out;
         };
         if group.pending.is_some() {
-            out.push(self.text_row(rail, "┊ (loading...)"));
+            out.push(self.text_row(
+                rail,
+                &format!("{} (loading...)", pick(self.ascii, "┊", ":")),
+            ));
             return out;
         }
         if matches!(group.load, LoadState::Failed { .. }) {
@@ -236,31 +277,45 @@ impl Ctx {
         }
         let count = group.items.len();
         for (i, child) in group.items.iter().enumerate() {
-            let connector = if i + 1 == count { "└─" } else { "├─" };
+            let last_child = i + 1 == count;
+            let connector = match (last_child, self.ascii) {
+                (true, false) => "└─",
+                (false, false) => "├─",
+                (true, true) => "`-",
+                (false, true) => "+-",
+            };
             let name = child.actor.as_ref().map(name_of).unwrap_or_default();
             let time = relative(child.created_at, now, offset);
             out.push(self.timed_row(rail, &format!("{connector} {name}"), &time));
         }
         let rest = (n.event_count as usize).saturating_sub(count);
         if rest > 0 {
-            out.push(self.text_row(rail, &format!("┊ {rest} more not shown")));
+            out.push(self.text_row(
+                rail,
+                &format!("{} {rest} more not shown", pick(self.ascii, "┊", ":")),
+            ));
         }
         out
     }
 
     fn headline(&self, n: &Notification, new: bool, time: &str) -> Line<'static> {
         let t = time.width();
-        let text = fit(&phrase(n), self.limit.saturating_sub(t + 1 + INDENT));
+        let text = fit(
+            &phrase(n),
+            self.limit.saturating_sub(t + 1 + INDENT),
+            self.ascii,
+        );
         let gap = self.limit.saturating_sub(INDENT + text.width() + t);
-        let node = if new {
-            Span::styled("◉", theme::current_style())
-        } else {
-            Span::raw("○")
+        let node = match (new, self.ascii) {
+            (true, false) => Span::styled("◉", theme::current_style()),
+            (false, false) => Span::raw("○"),
+            (true, true) => Span::styled("*", theme::current_style()),
+            (false, true) => Span::raw("o"),
         };
         Line::from(vec![
             Span::raw(" "),
             node,
-            Span::raw(format!(" {}  ", glyph(n.kind))),
+            Span::raw(format!(" {}  ", glyph(n.kind, self.ascii))),
             Span::raw(text),
             Span::raw(" ".repeat(gap)),
             Span::raw(time.to_string()),
@@ -289,15 +344,17 @@ pub fn rows(app: &App, width: u16) -> NotificationRows {
     let ctx = Ctx {
         limit: w.saturating_sub(1),
         truecolor: app.prefs().truecolor,
+        ascii: app.prefs().ascii,
     };
     let (now, offset) = (app.now(), app.local_offset());
     let mut out = NotificationRows::default();
 
     if state.new_count > 0 {
+        let arrow = pick(ctx.ascii, "↑", "^");
         let text = if state.new_count == 1 {
-            "↑ 1 new notification".to_string()
+            format!("{arrow} 1 new notification")
         } else {
-            format!("↑ {} new notifications", state.new_count)
+            format!("{arrow} {} new notifications", state.new_count)
         };
         let pad = center_offset(&text, w);
         out.lines.push(Line::from(vec![
@@ -311,9 +368,12 @@ pub fn rows(app: &App, width: u16) -> NotificationRows {
 
     if state.items.is_empty() {
         if state.pending.is_some() {
-            out.lines.push(plain(" ┊ (loading...)", ctx.limit));
+            out.lines.push(plain(
+                &format!(" {} (loading...)", pick(ctx.ascii, "┊", ":")),
+                ctx.limit,
+            ));
         } else if let LoadState::Failed { code, .. } = &state.load {
-            out.lines.push(retry_hint(code, w));
+            out.lines.push(retry_hint(code, w, ctx.ascii));
         } else if state.loaded_once && state.next_cursor.is_none() {
             out.lines
                 .push(plain(&empty_command(&state.filters), ctx.limit));
@@ -327,14 +387,21 @@ pub fn rows(app: &App, width: u16) -> NotificationRows {
     for n in &state.items {
         let new = is_new(n, state.read_at);
         if !new && seen_new && !head_done {
-            out.lines.push(rule(" ╌╌ HEAD@{last visit} ", "╌", w));
+            let dots = pick(ctx.ascii, "╌", ".");
+            out.lines.push(rule(
+                &format!(" {dots}{dots} HEAD@{{last visit}} "),
+                dots,
+                w,
+            ));
             head_done = true;
         }
         seen_new |= new;
         let day = n.created_at.to_offset(offset).date();
         if previous.is_none_or(|p| p.created_at.to_offset(offset).date() != day) {
             let label = day_label(n.created_at, now, offset);
-            out.lines.push(rule(&format!(" ╎ ── {label} "), "─", w));
+            let (bar, dash) = (pick(ctx.ascii, "╎", ":"), pick(ctx.ascii, "─", "-"));
+            out.lines
+                .push(rule(&format!(" {bar} {dash}{dash} {label} "), dash, w));
         }
 
         let time = relative(n.created_at, now, offset);
@@ -380,9 +447,12 @@ pub fn rows(app: &App, width: u16) -> NotificationRows {
     }
 
     if state.pending.as_ref().is_some_and(|p| p.append) {
-        out.lines.push(plain(" ┊ (loading more...)", w));
+        out.lines.push(plain(
+            &format!(" {} (loading more...)", pick(ctx.ascii, "┊", ":")),
+            w,
+        ));
     } else if let LoadState::Failed { code, append: true } = &state.load {
-        out.lines.push(retry_hint(code, w));
+        out.lines.push(retry_hint(code, w, ctx.ascii));
     }
     out
 }

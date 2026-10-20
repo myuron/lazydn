@@ -1052,8 +1052,8 @@ fn n1_notifications_wide() {
     snapshot!("notifications_wide", mockup(120, 40));
 }
 
-#[test]
-fn n2_notifications_expanded() {
+/// The first star group opened over a reply and an approval.
+fn expanded_fixture(w: u16, h: u16) -> App {
     let items = vec![
         with_commit(
             merge(
@@ -1083,7 +1083,7 @@ fn n2_notifications_expanded() {
             "my first commit to /dev/null",
         )),
     ];
-    let mut app = loaded(120, 30, items, None);
+    let mut app = loaded(w, h, items, None);
     let effects = type_str(&mut app, "o");
     app.update(Action::GroupLoaded {
         id: "n1".into(),
@@ -1106,7 +1106,12 @@ fn n2_notifications_expanded() {
             Some("more"),
         ),
     });
-    snapshot!("notifications_expanded", app);
+    app
+}
+
+#[test]
+fn n2_notifications_expanded() {
+    snapshot!("notifications_expanded", expanded_fixture(120, 30));
 }
 
 #[test]
@@ -1305,4 +1310,172 @@ fn the_bar_follows_the_selection_over_every_row_of_the_card() {
         assert_eq!(buffer[(21, y)].symbol(), " ", "row {y}");
     }
     assert_eq!(buffer[(21, 8)].symbol(), "▌");
+}
+
+// --- ASCII mode ----------------------------------------------------------------------------
+
+#[test]
+fn as2_notifications_ascii_at_80x24() {
+    snapshot!("notifications_ascii", with_ascii(expanded_fixture(80, 24)));
+}
+
+#[test]
+fn the_notifications_hold_only_ascii_in_ascii_mode() {
+    let terminal = render(&with_ascii(expanded_fixture(80, 24)));
+    assert_eq!(
+        non_ascii_cells(&terminal, (5, 79), (1, 22)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn every_kind_of_notification_is_ascii_in_ascii_mode() {
+    let kinds = [
+        "starred",
+        "replied",
+        "quoted",
+        "mentioned",
+        "followed",
+        "approved",
+    ];
+    let mut items: Vec<Value> = kinds
+        .iter()
+        .enumerate()
+        .map(|(i, kind)| {
+            with_commit(
+                notif_json(&format!("k{i}"), kind, 60 + 60 * i as i64),
+                &format!("c{i}"),
+                "myuron",
+                "an excerpt",
+            )
+        })
+        .collect();
+    items.push(seen(moderated("rejected", 3600)));
+    for (w, h) in [(80, 40), (120, 40)] {
+        let app = with_ascii(loaded(w, h, items.clone(), None));
+        let terminal = render(&app);
+        let main_right = if w == 80 { 79 } else { 87 };
+        let main_left = if w == 80 { 5 } else { 21 };
+        assert_eq!(
+            non_ascii_cells(&terminal, (main_left, main_right), (1, 38)),
+            Vec::<String>::new(),
+            "{w}"
+        );
+    }
+}
+
+#[test]
+fn a_closed_group_row_and_the_banner_are_ascii_in_ascii_mode() {
+    let app = with_ascii(mockup(80, 30));
+    let terminal = render(&app);
+    assert_eq!(
+        non_ascii_cells(&terminal, (5, 79), (1, 28)),
+        Vec::<String>::new()
+    );
+}
+
+// --- cuts in ASCII mode: `...` takes three columns ------------------------------------------
+
+/// The text of the Main pane inside the frame (x 5..79) for every row, and the frame column.
+fn main_rows(app: &App) -> Vec<(String, char)> {
+    let terminal = render(app);
+    let buffer = terminal.backend().buffer();
+    (0..buffer.area.height)
+        .map(|y| {
+            let row: Vec<char> = row_text(buffer, y).chars().collect();
+            (row[5..78].iter().collect(), row[79])
+        })
+        .collect()
+}
+
+#[test]
+fn a_summary_that_is_too_long_ends_in_three_dots_and_keeps_the_time_in_ascii_mode() {
+    let long = "x".repeat(200);
+    let item = with_commit(
+        merge(
+            notif_json("n0", "replied", 120),
+            json!({"actor": named("bob", &long)}),
+        ),
+        "c1",
+        "bob",
+        "short",
+    );
+    let rows = main_rows(&with_ascii(loaded(80, 40, vec![item], None)));
+    let (row, frame) = rows
+        .iter()
+        .find(|(r, _)| r.contains("xxxx"))
+        .expect("no headline")
+        .clone();
+    assert_eq!(frame, '┃', "{row:?}");
+    assert!(row.ends_with("2m"), "{row:?}");
+    assert!(row[..row.len() - 2].trim_end().ends_with("..."), "{row:?}");
+}
+
+#[test]
+fn an_excerpt_that_is_too_long_ends_in_three_dots_inside_its_box_in_ascii_mode() {
+    let item = with_commit(
+        notif_json("n0", "starred", 120),
+        "c1",
+        "myuron",
+        &"y".repeat(200),
+    );
+    let rows = main_rows(&with_ascii(loaded(80, 40, vec![item], None)));
+    let (row, frame) = rows
+        .iter()
+        .find(|(r, _)| r.contains("yyyy"))
+        .expect("no excerpt")
+        .clone();
+    assert_eq!(frame, '┃', "{row:?}");
+    assert!(row.trim_end().ends_with("... |"), "{row:?}");
+    assert!(row.ends_with('|'), "{row:?}");
+}
+
+#[test]
+fn a_body_of_three_rows_ends_in_three_dots_without_touching_the_frame_in_ascii_mode() {
+    let body = format!("one\n{}\nthree", "z".repeat(200));
+    let item = with_commit(notif_json("n0", "mentioned", 120), "c1", "bob", &body);
+    let rows = main_rows(&with_ascii(loaded(80, 40, vec![item], None)));
+    let (row, frame) = rows
+        .iter()
+        .find(|(r, _)| r.contains("zzzz"))
+        .expect("no second body row")
+        .clone();
+    assert_eq!(frame, '┃', "{row:?}");
+    assert!(row.trim_end().ends_with("..."), "{row:?}");
+}
+
+#[test]
+fn a_short_cut_body_row_shows_three_dots_in_ascii_mode() {
+    let item = with_commit(
+        notif_json("n0", "mentioned", 120),
+        "c1",
+        "bob",
+        "one\ntwo\nthree\nfour",
+    );
+    let rows = main_rows(&with_ascii(loaded(80, 40, vec![item], None)));
+    assert!(
+        rows.iter()
+            .any(|(r, _)| r.trim_end().ends_with("|    two...")),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn an_excerpt_with_an_ellipsis_of_its_own_keeps_the_box_square_in_ascii_mode() {
+    let item = with_commit(
+        notif_json("n0", "starred", 120),
+        "c1",
+        "myuron",
+        "wait… │ ◉ done",
+    );
+    let rows = main_rows(&with_ascii(loaded(80, 40, vec![item], None)));
+    let top = rows
+        .iter()
+        .position(|(r, _)| r.contains("+---"))
+        .expect("no top");
+    let (top, middle, bottom) = (&rows[top].0, &rows[top + 1].0, &rows[top + 2].0);
+    assert!(middle.contains("wait… │ ◉ done"), "{middle:?}");
+    let right = |r: &str| r.trim_end().chars().count();
+    assert_eq!(right(top), right(bottom), "{top:?} {bottom:?}");
+    assert_eq!(right(middle), right(top), "{middle:?}");
 }

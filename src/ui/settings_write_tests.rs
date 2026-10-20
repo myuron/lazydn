@@ -321,9 +321,9 @@ fn a_guest_still_sees_the_appearance_rows() {
     assert_eq!(
         body_of(&app, 5),
         vec![
-            right_aligned(" Theme", "dark", W - 1),
-            right_aligned(" Collapse nav", "[ ] off", W - 1),
-            right_aligned(" Lane dimming", "[ ] off", W - 1),
+            right_aligned("▌Theme", "dark  (not applied yet)", W - 1),
+            right_aligned(" Collapse nav", "[ ] off  (not applied yet)", W - 1),
+            right_aligned(" Lane dimming", "[ ] off  (not applied yet)", W - 1),
             right_aligned(" Reply previews", "3", W - 1),
             right_aligned(" ASCII mode", "[ ] off", W - 1),
         ]
@@ -461,4 +461,11 @@ fn the_last_person_released_leaves_the_empty_text_under_the_heading() {
         }),
     });
     assert_eq!(body_of(&app, 2), vec![" Muted", "  No muted users."]);
+}
+
+#[test]
+fn st5_settings_appearance_focus_at_80x24() {
+    let mut app = settings_app_for(me_with(None), 80, 24);
+    type_str(&mut app, "2jjjl");
+    snapshot!("settings_appearance_focus", app);
 }

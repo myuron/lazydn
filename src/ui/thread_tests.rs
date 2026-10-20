@@ -1047,3 +1047,12 @@ fn a_failed_refresh_shows_only_the_error_even_though_the_commit_is_known() {
     let t: Vec<String> = lines(&app).into_iter().filter(|l| !l.is_empty()).collect();
     assert_eq!(t, strings(&[" fatal: commit m1 is not available"]));
 }
+
+#[test]
+fn the_thread_holds_only_ascii_in_ascii_mode() {
+    let terminal = render(&with_ascii(full_thread(120, 50)));
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (1, 48)),
+        Vec::<String>::new()
+    );
+}

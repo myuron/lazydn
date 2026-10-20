@@ -39,7 +39,15 @@ The config directory is `$LAZYDN_CONFIG_DIR`, else `$XDG_CONFIG_HOME/lazydn`, el
 The state directory is `$LAZYDN_STATE_DIR`, else `$XDG_STATE_HOME/lazydn`, else `~/.local/state/lazydn`.
 A relative `XDG_*` value is ignored. A relative `LAZYDN_CONFIG_DIR` or `LAZYDN_STATE_DIR` stops lazydn at startup. An empty variable counts as unset.
 
-lazydn only reads `config.toml`; create it yourself. Keys: `theme` (`"dark"` or `"light"`), `collapse_nav`, `lane_dimming`, `ascii` (booleans) and `reply_preview_limit` (1, 3, 5, 10, 15, 20 or 25). A field that is missing falls back to its default; one with the wrong type or a value that is not allowed also falls back, and is reported in a toast.
+`config.toml` is optional: lazydn runs with the defaults when it is missing. Keys: `theme` (`"dark"` or `"light"`), `collapse_nav`, `lane_dimming`, `ascii` (booleans) and `reply_preview_limit` (1, 3, 5, 10, 15, 20 or 25). A field that is missing falls back to its default; one with the wrong type or a value that is not allowed also falls back, and is reported in a toast.
+
+The `theme`, `collapse_nav` and `lane_dimming` values are saved but do not change the display yet (the tab says `(not applied yet)`); `reply_preview_limit` and `ascii` take effect at once.
+
+Changing a value on the Appearance tab of Settings (a guest can too) rewrites `config.toml` at once:
+
+- The file is read again just before it is written. Only the five keys above are updated; keys that lazydn does not know are kept, but **comments and formatting are lost**.
+- A missing file (and, if needed, its directory and parents, mode 700) is created. The file is written to a temporary file with mode 600 and renamed over `config.toml`, so an existing file ends up with mode 600 too.
+- A `config.toml` that is a symlink (for example one managed by home-manager or stow), cannot be read or is not valid TOML is **left alone**: the new value stays for this session and a toast tells you that it was not saved. If the config directory itself is a symlink, the file is written through it.
 
 The last visit is saved when you quit with `Q` or `Ctrl+C`; SIGTERM and SIGHUP (closing the terminal) do not save it.
 

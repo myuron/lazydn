@@ -1104,3 +1104,110 @@ fn failed_refresh_over_the_last_page_keeps_the_root_line_and_shows_no_error_line
 fn visit(app: &mut App, tab: LogTab, id: &str) {
     app.update(Action::SetLastVisit { tab, id: id.into() });
 }
+
+// --- ASCII mode ----------------------------------------------------------------------------
+
+#[test]
+fn as1_log_ascii_at_80x24() {
+    snapshot!("log_ascii", with_ascii(feed_fixture(80, 24)));
+}
+
+#[test]
+fn the_log_list_holds_only_ascii_in_ascii_mode() {
+    let terminal = render(&with_ascii(feed_fixture(80, 24)));
+    assert_eq!(
+        non_ascii_cells(&terminal, (5, 79), (3, 22)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_saved_list_holds_only_ascii_in_ascii_mode() {
+    let app = with_ascii(saved(
+        120,
+        30,
+        page_of(
+            vec![ago(0, "alice", 3), ago(1, "bob", 25), ago(2, "carol", 60)],
+            None,
+        ),
+    ));
+    let terminal = render(&app);
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (1, 28)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_loading_row_and_the_root_row_are_ascii_in_ascii_mode() {
+    let mut app = with_ascii(following(
+        80,
+        24,
+        page_of(vec![ago(0, "alice", 3)], Some("next")),
+    ));
+    let loading = render(&app);
+    assert_eq!(
+        non_ascii_cells(&loading, (5, 79), (3, 22)),
+        Vec::<String>::new()
+    );
+    app = with_ascii(following(80, 24, page_of(vec![ago(0, "alice", 3)], None)));
+    let root = render(&app);
+    assert_eq!(
+        non_ascii_cells(&root, (5, 79), (3, 22)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_hints_of_the_status_line_are_ascii_in_ascii_mode() {
+    let terminal = render(&with_ascii(feed_fixture(80, 24)));
+    let row = row_text(terminal.backend().buffer(), 23);
+    assert!(
+        row.starts_with(" Log > Following  j/k move  Enter open  c commit  ? help"),
+        "{row:?}"
+    );
+}
+
+#[test]
+fn the_retry_hint_of_a_failed_list_is_ascii_in_ascii_mode() {
+    let (mut app, effects) = started(80, 24);
+    app.update(Action::FeedFailed {
+        key: FOLLOWING,
+        req: first_req(&effects),
+        failure: Failure::new("rate_limited"),
+    });
+    let app = with_ascii(app);
+    let terminal = render(&app);
+    assert_eq!(
+        non_ascii_cells(&terminal, (5, 79), (3, 22)),
+        Vec::<String>::new()
+    );
+    let buffer = terminal.backend().buffer();
+    let text: Vec<String> = (3..22).map(|y| row_text(buffer, y)).collect();
+    assert!(
+        text.iter()
+            .any(|r| r.contains("error: rate_limited - press R to retry")),
+        "{text:#?}"
+    );
+}
+
+#[test]
+fn what_the_author_wrote_is_not_touched_in_ascii_mode() {
+    let body = "wait… a │ b ◉ c ╎ d ─ e";
+    let mut value = commit_json(0, "alice", NOW - Duration::minutes(3));
+    value["body"] = json!(body);
+    value["body_segments"] = json!([{"type": "text", "text": body}]);
+    let commit = build(value);
+    let shown = |ascii: bool| {
+        let app = following(120, 24, page_of(vec![commit.clone()], None));
+        let app = if ascii { with_ascii(app) } else { app };
+        let terminal = render(&app);
+        let buffer = terminal.backend().buffer();
+        (0..24)
+            .map(|y| row_text(buffer, y))
+            .find(|r| r.contains("wait"))
+            .unwrap_or_default()
+    };
+    assert!(shown(false).contains(body), "{}", shown(false));
+    assert!(shown(true).contains(body), "{}", shown(true));
+}

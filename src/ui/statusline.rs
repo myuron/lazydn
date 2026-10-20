@@ -1,6 +1,7 @@
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::widgets::Paragraph;
+use unicode_width::UnicodeWidthStr;
 
 use crate::api::client::RateLimit;
 use crate::app::{App, ConnState, ConnTab, Screen};
@@ -15,17 +16,6 @@ pub fn breadcrumb(app: &App) -> String {
         Screen::Connections(_, ConnTab::Followers) => "Profile > Followers".to_string(),
         Screen::Connections(_, ConnTab::Following) => "Profile > Following".to_string(),
         other => screen_name(&other).to_string(),
-    }
-}
-
-pub fn left(mode: LayoutMode, breadcrumb: &str) -> String {
-    match mode {
-        LayoutMode::Wide => {
-            format!("{breadcrumb}  j/k move  ↵ open  c commit  Tab pane  ? help")
-        }
-        LayoutMode::Medium => format!("{breadcrumb}  j/k move  ↵ open  c commit  ? help"),
-        LayoutMode::Narrow => "j/k ↵ c ?".to_string(),
-        LayoutMode::TooSmall => String::new(),
     }
 }
 
@@ -69,16 +59,11 @@ pub fn right_with(
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let mode = app.layout_mode();
+    let right = right_with(mode, app.rate(), app.conn_state(), app.host_label());
+    let left = crate::ui::hints::status_left(app, mode, &breadcrumb(app), right.width());
+    frame.render_widget(Paragraph::new(left), area);
     frame.render_widget(
-        Paragraph::new(format!(" {}", left(mode, &breadcrumb(app)))),
-        area,
-    );
-    frame.render_widget(
-        Paragraph::new(format!(
-            "{} ",
-            right_with(mode, app.rate(), app.conn_state(), app.host_label())
-        ))
-        .alignment(Alignment::Right),
+        Paragraph::new(format!("{right} ")).alignment(Alignment::Right),
         area,
     );
 }

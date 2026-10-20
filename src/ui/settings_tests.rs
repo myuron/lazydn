@@ -376,9 +376,9 @@ fn the_appearance_tab_shows_the_default_prefs() {
     assert_eq!(
         body_of(&app, 5),
         vec![
-            right_aligned(" Theme", "dark", W - 1),
-            right_aligned(" Collapse nav", "[ ] off", W - 1),
-            right_aligned(" Lane dimming", "[ ] off", W - 1),
+            right_aligned("▌Theme", "dark  (not applied yet)", W - 1),
+            right_aligned(" Collapse nav", "[ ] off  (not applied yet)", W - 1),
+            right_aligned(" Lane dimming", "[ ] off  (not applied yet)", W - 1),
             right_aligned(" Reply previews", "3", W - 1),
             right_aligned(" ASCII mode", "[ ] off", W - 1),
         ]
@@ -393,9 +393,9 @@ fn the_appearance_tab_shows_the_values_of_the_prefs() {
     assert_eq!(
         body_of(&app, 5),
         vec![
-            right_aligned(" Theme", "light", W - 1),
-            right_aligned(" Collapse nav", "[x] on", W - 1),
-            right_aligned(" Lane dimming", "[ ] off", W - 1),
+            right_aligned("▌Theme", "light  (not applied yet)", W - 1),
+            right_aligned(" Collapse nav", "[x] on  (not applied yet)", W - 1),
+            right_aligned(" Lane dimming", "[ ] off  (not applied yet)", W - 1),
             right_aligned(" Reply previews", "10", W - 1),
             right_aligned(" ASCII mode", "[x] on", W - 1),
         ]
@@ -412,7 +412,7 @@ fn lane_dimming_shows_on_when_the_pref_is_on() {
     type_str(&mut app, "2");
     assert_eq!(
         body_of(&app, 3)[2],
-        right_aligned(" Lane dimming", "[x] on", W - 1)
+        right_aligned(" Lane dimming", "[x] on  (not applied yet)", W - 1)
     );
 }
 

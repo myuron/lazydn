@@ -115,6 +115,7 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::CreateCommit { .. }
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
+        | Effect::SaveConfig(_)
         | Effect::StarCommit { .. }
         | Effect::BookmarkCommit { .. }
         | Effect::GivePastel { .. }

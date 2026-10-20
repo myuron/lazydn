@@ -107,27 +107,32 @@ pub(crate) fn rule(head: &str, fill: &str, width: usize) -> Line<'static> {
     plain(&format!("{head}{}", fill.repeat(fill_len)), limit)
 }
 
-pub(crate) fn retry_hint(code: &str, width: usize) -> Line<'static> {
-    plain(&format!(" error: {code} — press R to retry"), width)
+pub(crate) fn retry_hint(code: &str, width: usize, ascii: bool) -> Line<'static> {
+    let dash = crate::ui::ascii::pick(ascii, "—", "-");
+    plain(&format!(" error: {code} {dash} press R to retry"), width)
 }
 
-fn composer(width: usize, draft: Option<String>) -> Vec<Line<'static>> {
+fn composer(width: usize, draft: Option<String>, ascii: bool) -> Vec<Line<'static>> {
+    let (bar, node) = (
+        crate::ui::ascii::pick(ascii, "┆", ":"),
+        crate::ui::ascii::pick(ascii, "◌", "o"),
+    );
     let hint_col = HINT_COL_MAX.min(width.saturating_sub(1 + HINT.len()));
     let hint_row = if hint_col >= HINT_COL_MIN {
-        format!(" ┆{}{HINT}", " ".repeat(hint_col - 2))
+        format!(" {bar}{}{HINT}", " ".repeat(hint_col - 2))
     } else {
-        " ┆".to_string()
+        format!(" {bar}")
     };
     vec![
-        plain(" ┆", width),
+        plain(&format!(" {bar}"), width),
         match &draft {
-            Some(first) => plain(&format!(" ◌  {first}"), width.saturating_sub(1)),
-            None => plain(" ◌  What did you ship?", width),
+            Some(first) => plain(&format!(" {node}  {first}"), width.saturating_sub(1)),
+            None => plain(&format!(" {node}  What did you ship?"), width),
         },
         plain(&hint_row, width),
         match draft {
-            Some(_) => plain(" ┆  stash@{0} draft saved", width),
-            None => plain(" ┆", width),
+            Some(_) => plain(&format!(" {bar}  stash@{{0}} draft saved"), width),
+            None => plain(&format!(" {bar}"), width),
         },
     ]
 }
@@ -140,15 +145,19 @@ fn rail(commit: &Commit, ctx: &RenderCtx, width: usize) -> Line<'static> {
     }
     Line::from(vec![
         Span::raw(" "),
-        Span::styled("│", Style::new().fg(color)),
+        Span::styled(
+            crate::ui::ascii::pick(ctx.ascii, "│", "|"),
+            Style::new().fg(color),
+        ),
     ])
 }
 
-fn new_commits_banner(count: u32, width: usize) -> Line<'static> {
+fn new_commits_banner(count: u32, width: usize, ascii: bool) -> Line<'static> {
+    let arrow = crate::ui::ascii::pick(ascii, "↑", "^");
     let text = if count == 1 {
-        "↑ 1 new commit".to_string()
+        format!("{arrow} 1 new commit")
     } else {
-        format!("↑ {count} new commits")
+        format!("{arrow} {count} new commits")
     };
     let offset = center_offset(&text, width);
     Line::from(vec![
@@ -239,9 +248,17 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
 
     if matches!(app.session(), Session::Restoring) && is_log {
         let text = if app.conn_state() == ConnState::Offline {
-            " offline — retrying"
+            if env.ctx.ascii {
+                " offline - retrying"
+            } else {
+                " offline — retrying"
+            }
         } else {
-            " restoring session…"
+            if env.ctx.ascii {
+                " restoring session..."
+            } else {
+                " restoring session…"
+            }
         };
         out.lines.push(plain(text, w));
         return out;
@@ -252,14 +269,17 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
                 out.cursor = Some((out.lines.len() + cursor.0, cursor.1));
                 out.lines.extend(field);
             }
-            None => out
-                .lines
-                .extend(composer(w, crate::ui::compose::draft_preview(app))),
+            None => out.lines.extend(composer(
+                w,
+                crate::ui::compose::draft_preview(app),
+                env.ctx.ascii,
+            )),
         }
     }
 
     if chronological && feed.new_commits > 0 {
-        out.lines.push(new_commits_banner(feed.new_commits, w));
+        out.lines
+            .push(new_commits_banner(feed.new_commits, w, env.ctx.ascii));
     }
 
     if feed.items.is_empty() {
@@ -275,13 +295,24 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
             let day = commit.created_at.to_offset(offset).date();
             if previous.is_none_or(|p| p.created_at.to_offset(offset).date() != day) {
                 let label = day_label(commit.created_at, env.ctx.now, offset);
-                out.lines.push(rule(&format!(" ╎ ── {label} "), "─", w));
+                let ascii = env.ctx.ascii;
+                let (bar, dash) = (
+                    crate::ui::ascii::pick(ascii, "╎", ":"),
+                    crate::ui::ascii::pick(ascii, "─", "-"),
+                );
+                out.lines
+                    .push(rule(&format!(" {bar} {dash}{dash} {label} "), dash, w));
                 boundary = true;
             }
             if i > 0
                 && matches!(key, FeedKey::Log(tab) if app.last_visit_of(tab) == Some(commit.id.as_str()))
             {
-                out.lines.push(rule(" ╌╌ HEAD@{last visit} ", "╌", w));
+                let dots = crate::ui::ascii::pick(env.ctx.ascii, "╌", ".");
+                out.lines.push(rule(
+                    &format!(" {dots}{dots} HEAD@{{last visit}} "),
+                    dots,
+                    w,
+                ));
                 boundary = true;
             }
         }
@@ -311,30 +342,33 @@ pub fn rows(feed: &Feed, key: FeedKey, app: &App, width: u16) -> FeedRows {
         previous = Some(commit);
     }
 
-    out.lines.extend(list_tail(feed, w));
+    out.lines.extend(list_tail(feed, w, env.ctx.ascii));
     out
 }
 
 /// The row of a list that has nothing to show yet because it is loading or failed.
-pub(crate) fn pending_or_failed_row(feed: &Feed, w: usize) -> Option<Line<'static>> {
+pub(crate) fn pending_or_failed_row(feed: &Feed, w: usize, ascii: bool) -> Option<Line<'static>> {
     if feed.pending.is_some() {
-        return Some(plain(" ┊ (loading...)", w));
+        let dots = crate::ui::ascii::pick(ascii, "┊", ":");
+        return Some(plain(&format!(" {dots} (loading...)"), w));
     }
     match &feed.load {
-        LoadState::Failed { code, .. } => Some(retry_hint(code, w)),
+        LoadState::Failed { code, .. } => Some(retry_hint(code, w, ascii)),
         LoadState::Idle => None,
     }
 }
 
 /// The closing row under the last card: more loading, a failed page, or the end of history.
-pub(crate) fn list_tail(feed: &Feed, w: usize) -> Option<Line<'static>> {
+pub(crate) fn list_tail(feed: &Feed, w: usize, ascii: bool) -> Option<Line<'static>> {
     if feed.pending.as_ref().is_some_and(|p| p.append) {
-        Some(plain(" ┊ (loading more...)", w))
+        let dots = crate::ui::ascii::pick(ascii, "┊", ":");
+        Some(plain(&format!(" {dots} (loading more...)"), w))
     } else if let LoadState::Failed { code, append: true } = &feed.load {
-        Some(retry_hint(code, w))
+        Some(retry_hint(code, w, ascii))
     } else if feed.loaded_once && feed.next_cursor.is_none() && feed.pending.is_none() {
+        let node = crate::ui::ascii::pick(ascii, "○", "o");
         Some(plain(
-            " ○ That's the root commit. There's nothing before it.",
+            &format!(" {node} That's the root commit. There's nothing before it."),
             w,
         ))
     } else {
@@ -344,7 +378,7 @@ pub(crate) fn list_tail(feed: &Feed, w: usize) -> Option<Line<'static>> {
 
 fn empty_state(feed: &Feed, key: FeedKey, env: &Env) -> Vec<Line<'static>> {
     let w = env.width;
-    if let Some(row) = pending_or_failed_row(feed, w) {
+    if let Some(row) = pending_or_failed_row(feed, w, env.ctx.ascii) {
         return vec![row];
     }
     if !feed.loaded_once {

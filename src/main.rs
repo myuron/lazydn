@@ -106,7 +106,10 @@ fn main() -> Result<()> {
         exec,
         launcher: SystemLauncher,
         clipboard: Osc52Clipboard::new(stdout()),
-        store: FileStore { dir: state_dir },
+        store: FileStore {
+            dir: state_dir,
+            config_dir,
+        },
         base_url: base.url,
     };
 

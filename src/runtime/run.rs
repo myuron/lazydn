@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::external::{Clipboard, Launcher, copy_link, copy_text, open_url};
 use crate::action::{Action, Effect};
-use crate::app::{App, LogTab};
+use crate::app::{App, LogTab, Prefs};
 use crate::drafts::Drafts;
 
 /// Which API client the next request goes out with.
@@ -28,6 +28,9 @@ pub trait Store {
 
     /// Reads the drafts of `account`; a missing or corrupt file gives none.
     fn load_drafts(&mut self, account: &str) -> Drafts;
+
+    /// Writes the Appearance settings into `config.toml`; the error is the text for the toast.
+    fn save_config(&mut self, prefs: &Prefs) -> Result<(), String>;
 }
 
 /// What the loop does after an action.
@@ -92,6 +95,13 @@ impl<E: Exec, L: Launcher, C: Clipboard, S: Store> Runtime<E, L, C, S> {
                         }
                     }
                 }
+                Effect::SaveConfig(prefs) => match self.store.save_config(&prefs) {
+                    Ok(()) => continue,
+                    Err(text) => vec![Action::Notice {
+                        kind: crate::app::ToastKind::Error,
+                        text,
+                    }],
+                },
                 Effect::LoadDrafts { account } => {
                     let drafts = self.store.load_drafts(&account);
                     vec![Action::DraftsLoaded { account, drafts }]
@@ -121,9 +131,10 @@ impl<E: Exec, L: Launcher, C: Clipboard, S: Store> Runtime<E, L, C, S> {
     }
 }
 
-/// Keeps the last visit in `state.toml` under `dir`.
+/// Keeps the last visit and the drafts under `dir`, and `config.toml` under `config_dir`.
 pub struct FileStore {
     pub dir: std::path::PathBuf,
+    pub config_dir: std::path::PathBuf,
 }
 
 impl Store for FileStore {
@@ -137,5 +148,9 @@ impl Store for FileStore {
 
     fn load_drafts(&mut self, account: &str) -> Drafts {
         crate::drafts::load_drafts(&self.dir, account)
+    }
+
+    fn save_config(&mut self, prefs: &Prefs) -> Result<(), String> {
+        crate::config::save_prefs(&self.config_dir, prefs)
     }
 }

@@ -41,4 +41,4 @@ expression: terminal.backend()
 "│                  │┃                                                                  ┃                                "
 "│                  │┃                                                                  ┃                                "
 "└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
-" Log > Latest  j/k move  ↵ open  c commit  Tab pane  ? help                                       API -/-  ○ connecting "
+" Log > Latest  ↵ submit  Esc close  ^O browser  ^Y copy  ^U clear  ^R refresh                     API -/-  ○ connecting "

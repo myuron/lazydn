@@ -692,7 +692,7 @@ impl App {
                 failure,
                 ..
             } => self.block_failed(&username, req, &failure),
-            Action::SettingsStep(step) => self.settings_step(step),
+            Action::SettingsStep(step) => effects.extend(self.settings_step(step)),
             Action::SettingsToggle => effects.extend(self.guarded_settings_toggle()),
             Action::SyncGithub => effects.extend(self.sync_github()),
             Action::OpenAccountDelete => effects.extend(self.open_account_delete()),

@@ -92,3 +92,12 @@ fn st1_card_starred_saved() {
 fn st2_card_starred_saved_ascii() {
     snapshot!("card_starred_saved_ascii", starred_and_saved(true));
 }
+
+#[test]
+fn the_list_of_the_ascii_screen_holds_only_ascii() {
+    let terminal = render(&starred_and_saved(true));
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (3, 38)),
+        Vec::<String>::new()
+    );
+}

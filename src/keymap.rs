@@ -74,7 +74,9 @@ fn map_text_key(key: KeyEvent, esc: Action) -> Option<Action> {
 fn map_settings_key(app: &App, key: KeyEvent) -> Option<Action> {
     let step = |n: i8| Some(Action::SettingsStep(n));
     match (app.settings().tab, key.code) {
-        (SettingsTab::Appearance, _) => None,
+        (SettingsTab::Appearance, KeyCode::Char('l') | KeyCode::Right) => step(1),
+        (SettingsTab::Appearance, KeyCode::Char('h') | KeyCode::Left) => step(-1),
+        (SettingsTab::Appearance, KeyCode::Char(' ')) => Some(Action::SettingsToggle),
         (_, KeyCode::Char('j') | KeyCode::Down) => Some(Action::MoveSelection(1)),
         (_, KeyCode::Char('k') | KeyCode::Up) => Some(Action::MoveSelection(-1)),
         (_, KeyCode::Enter) => Some(Action::OpenSelected),

@@ -7,7 +7,7 @@ use url::Url;
 use super::external::{Clipboard, Launcher};
 use super::run::{ClientKind, Control, Exec, Runtime, Store};
 use crate::action::{Action, Effect};
-use crate::app::{LogTab, ToastKind};
+use crate::app::{LogTab, Prefs, ToastKind};
 use crate::drafts::{DraftKey, Drafts};
 use crate::editor::Editor;
 use crate::feed::ReqId;
@@ -54,6 +54,8 @@ struct FakeStore {
     drafts_answer: Result<(), String>,
     loaded_accounts: Shared<String>,
     drafts_on_disk: Drafts,
+    saved_config: Shared<Prefs>,
+    config_answer: Result<(), String>,
 }
 
 impl Store for FakeStore {
@@ -73,6 +75,11 @@ impl Store for FakeStore {
         self.loaded_accounts.borrow_mut().push(account.to_string());
         self.drafts_on_disk.clone()
     }
+
+    fn save_config(&mut self, prefs: &Prefs) -> Result<(), String> {
+        self.saved_config.borrow_mut().push(prefs.clone());
+        self.config_answer.clone()
+    }
 }
 
 type TestRuntime = Runtime<FakeExec, FakeLauncher, FakeClipboard, FakeStore>;
@@ -86,6 +93,7 @@ struct Rig {
     saved: Shared<HashMap<LogTab, String>>,
     saved_drafts: Shared<(String, Drafts)>,
     loaded_accounts: Shared<String>,
+    saved_config: Shared<Prefs>,
 }
 
 fn rig_with(client: ClientKind, copy: Result<(), String>, save: Result<(), String>) -> Rig {
@@ -96,6 +104,7 @@ fn rig_with(client: ClientKind, copy: Result<(), String>, save: Result<(), Strin
     let saved = Shared::default();
     let saved_drafts = Shared::default();
     let loaded_accounts = Shared::default();
+    let saved_config = Shared::default();
     let runtime = Runtime {
         app,
         client,
@@ -112,6 +121,8 @@ fn rig_with(client: ClientKind, copy: Result<(), String>, save: Result<(), Strin
             drafts_answer: Ok(()),
             loaded_accounts: loaded_accounts.clone(),
             drafts_on_disk: Drafts::default(),
+            saved_config: saved_config.clone(),
+            config_answer: Ok(()),
         },
         base_url: BASE.into(),
     };
@@ -123,6 +134,7 @@ fn rig_with(client: ClientKind, copy: Result<(), String>, save: Result<(), Strin
         saved,
         saved_drafts,
         loaded_accounts,
+        saved_config,
     }
 }
 
@@ -540,6 +552,7 @@ fn the_file_store_keeps_drafts_in_the_state_dir_per_account() {
     let tmp = tempfile::tempdir().unwrap();
     let mut store = super::run::FileStore {
         dir: tmp.path().to_path_buf(),
+        config_dir: tmp.path().join("config"),
     };
 
     store.save_drafts(ACCOUNT, &drafts_with("kept")).unwrap();
@@ -557,6 +570,7 @@ fn the_file_store_refuses_an_account_id_that_cannot_name_a_file() {
     let tmp = tempfile::tempdir().unwrap();
     let mut store = super::run::FileStore {
         dir: tmp.path().to_path_buf(),
+        config_dir: tmp.path().join("config"),
     };
 
     assert!(store.save_drafts("../evil", &drafts_with("x")).is_err());
@@ -735,6 +749,7 @@ fn deleting_the_account_returns_to_a_guest_and_keeps_the_key_the_drafts_and_the_
     let tmp = tempfile::tempdir().unwrap();
     let mut store = super::run::FileStore {
         dir: tmp.path().to_path_buf(),
+        config_dir: tmp.path().join("config"),
     };
     store.save_drafts(ACCOUNT, &drafts_with("kept")).unwrap();
     std::fs::write(tmp.path().join("id_ed25519"), "key").unwrap();
@@ -798,4 +813,207 @@ fn deleting_the_account_returns_to_a_guest_and_keeps_the_key_the_drafts_and_the_
     assert_eq!(runtime.app.session(), &crate::app::Session::Guest);
     assert_eq!(runtime.client, ClientKind::Guest);
     assert_eq!(listing(tmp.path()), before);
+}
+
+// --- saving the Appearance settings ---------------------------------------------------------------
+
+fn changed_prefs() -> Prefs {
+    Prefs {
+        ascii: true,
+        theme: crate::app::Theme::Light,
+        ..Prefs::default()
+    }
+}
+
+/// On the Appearance tab with the theme row focused; `Action::SettingsToggle` flips the theme.
+fn on_appearance<E: Exec, L: Launcher, C: Clipboard, S: Store>(runtime: &mut Runtime<E, L, C, S>) {
+    runtime.handle(Action::Goto(crate::app::Screen::Settings));
+    runtime.handle(Action::SwitchSettingsTab(
+        crate::app::SettingsTab::Appearance,
+    ));
+}
+
+#[test]
+fn a_save_config_effect_is_written_by_the_store_on_the_spot_and_not_spawned() {
+    let mut rig = rig();
+
+    let control = rig.runtime.apply(vec![Effect::SaveConfig(changed_prefs())]);
+
+    assert_eq!(control, Control::Continue);
+    assert_eq!(*rig.saved_config.borrow(), vec![changed_prefs()]);
+    assert!(rig.spawned.borrow().is_empty());
+    assert!(rig.runtime.app.toast().is_none());
+}
+
+#[test]
+fn a_save_config_effect_keeps_its_place_among_the_effects() {
+    let mut rig = rig();
+
+    rig.runtime.apply(vec![
+        fetch(1),
+        Effect::SaveConfig(changed_prefs()),
+        Effect::UseSignedClient,
+        fetch(2),
+    ]);
+
+    assert_eq!(
+        *rig.spawned.borrow(),
+        vec![
+            (ClientKind::Guest, fetch(1)),
+            (ClientKind::Signed, fetch(2))
+        ]
+    );
+    assert_eq!(rig.saved_config.borrow().len(), 1);
+}
+
+#[test]
+fn a_refused_config_save_shows_the_text_of_the_store_as_an_error_toast() {
+    let mut rig = rig();
+    rig.runtime.store.config_answer =
+        Err("config.toml could not be parsed; settings not saved".into());
+
+    let control = rig.runtime.apply(vec![Effect::SaveConfig(changed_prefs())]);
+
+    assert_eq!(control, Control::Continue);
+    let toast = rig.runtime.app.toast().expect("no toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert_eq!(
+        toast.text,
+        "config.toml could not be parsed; settings not saved"
+    );
+}
+
+#[test]
+fn the_same_refusal_again_only_keeps_the_toast_up_longer() {
+    let mut rig = rig();
+    rig.runtime.store.config_answer = Err("config.toml is a symlink; settings not saved".into());
+    rig.runtime.apply(vec![Effect::SaveConfig(changed_prefs())]);
+    let first = rig.runtime.app.toast().cloned().expect("no toast");
+
+    rig.runtime
+        .handle(Action::Tick(NOW + time::Duration::seconds(2)));
+    rig.runtime.apply(vec![Effect::SaveConfig(changed_prefs())]);
+
+    let second = rig.runtime.app.toast().cloned().expect("toast gone");
+    assert_eq!(second.text, first.text);
+    assert_eq!(second.until, first.until + time::Duration::seconds(2));
+}
+
+#[test]
+fn a_key_on_the_appearance_tab_reaches_the_store_with_the_changed_prefs() {
+    let mut rig = rig();
+    on_appearance(&mut rig.runtime);
+
+    rig.runtime.handle(Action::SettingsToggle);
+
+    let saved = rig.saved_config.borrow().clone();
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].theme, crate::app::Theme::Light);
+    assert_eq!(&saved[0], rig.runtime.app.prefs());
+}
+
+fn file_runtime(
+    tmp: &std::path::Path,
+) -> Runtime<FakeExec, FakeLauncher, FakeClipboard, super::run::FileStore> {
+    Runtime {
+        app: signed_in(120, 40),
+        client: ClientKind::Signed,
+        exec: FakeExec(Shared::default()),
+        launcher: FakeLauncher(Shared::default()),
+        clipboard: FakeClipboard {
+            copied: Shared::default(),
+            answer: Ok(()),
+        },
+        store: super::run::FileStore {
+            dir: tmp.join("state"),
+            config_dir: tmp.join("config"),
+        },
+        base_url: BASE.into(),
+    }
+}
+
+#[test]
+fn the_file_store_writes_config_toml_under_the_config_dir_and_not_the_state_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut runtime = file_runtime(tmp.path());
+    on_appearance(&mut runtime);
+
+    runtime.handle(Action::SettingsToggle);
+
+    let text = std::fs::read_to_string(tmp.path().join("config").join("config.toml")).unwrap();
+    let table: toml::Table = text.parse().unwrap();
+    assert_eq!(table["theme"].as_str(), Some("light"));
+    assert!(!tmp.path().join("state").join("config.toml").exists());
+    assert!(runtime.app.toast().is_none());
+}
+
+#[test]
+fn a_config_toml_that_does_not_parse_is_kept_and_the_toast_says_so_while_the_value_stays_changed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config = tmp.path().join("config");
+    std::fs::create_dir(&config).unwrap();
+    std::fs::write(config.join("config.toml"), "theme = [unclosed\n").unwrap();
+    let mut runtime = file_runtime(tmp.path());
+    on_appearance(&mut runtime);
+
+    runtime.handle(Action::SettingsToggle);
+
+    assert_eq!(
+        std::fs::read_to_string(config.join("config.toml")).unwrap(),
+        "theme = [unclosed\n"
+    );
+    let toast = runtime.app.toast().expect("no toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert_eq!(
+        toast.text,
+        "config.toml could not be parsed; settings not saved"
+    );
+    assert_eq!(runtime.app.prefs().theme, crate::app::Theme::Light);
+}
+
+#[test]
+fn a_symlinked_config_toml_is_not_replaced_and_the_toast_says_so() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config = tmp.path().join("config");
+    std::fs::create_dir(&config).unwrap();
+    let target = tmp.path().join("managed.toml");
+    std::fs::write(&target, "ascii = false\n").unwrap();
+    std::os::unix::fs::symlink(&target, config.join("config.toml")).unwrap();
+    let mut runtime = file_runtime(tmp.path());
+    on_appearance(&mut runtime);
+
+    runtime.handle(Action::SettingsToggle);
+
+    assert!(
+        config
+            .join("config.toml")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "ascii = false\n");
+    assert_eq!(
+        runtime.app.toast().map(|t| t.text.clone()),
+        Some("config.toml is a symlink; settings not saved".to_string())
+    );
+}
+
+#[test]
+fn a_directory_that_cannot_be_made_gives_a_toast_and_keeps_the_value() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("config"), "a file in the way").unwrap();
+    let mut runtime = file_runtime(tmp.path());
+    on_appearance(&mut runtime);
+
+    runtime.handle(Action::SettingsToggle);
+
+    let toast = runtime.app.toast().expect("no toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert!(
+        toast.text.starts_with("settings could not be saved ("),
+        "{}",
+        toast.text
+    );
+    assert_eq!(runtime.app.prefs().theme, crate::app::Theme::Light);
 }

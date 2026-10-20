@@ -31,4 +31,4 @@ expression: terminal.backend()
 "┃ │    reason: spam                                        ┃"
 "┃ │    Only you can see this update and your rejected com… ┃"
 "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
-" j/k ↵ c ?                                              -/- "
+" j/k ↵ 1-6 a ?                                          -/- "

@@ -234,7 +234,13 @@ fn list_rows(app: &App, state: &ProfileState, env: &Env, out: &mut ProfileRows) 
         let placed = env.placed.take();
         out.lines.extend(rows);
         if i == 0 && has_pinned {
-            out.lines.push(plain(" ⚲ Pinned", w));
+            out.lines.push(plain(
+                &format!(
+                    " {} Pinned",
+                    crate::ui::ascii::pick(env.ctx.ascii, "⚲", "#")
+                ),
+                w,
+            ));
         }
         out.cards.push(CardSpan {
             start: out.lines.len(),
@@ -249,7 +255,7 @@ fn list_rows(app: &App, state: &ProfileState, env: &Env, out: &mut ProfileRows) 
     }
     // Emptiness is judged without the pinned commit, which is not part of the list being loaded.
     if feed.items.is_empty() {
-        let row = pending_or_failed_row(feed, w).or_else(|| {
+        let row = pending_or_failed_row(feed, w, env.ctx.ascii).or_else(|| {
             feed.loaded_once.then(|| {
                 plain(
                     match state.tab {
@@ -262,7 +268,7 @@ fn list_rows(app: &App, state: &ProfileState, env: &Env, out: &mut ProfileRows) 
         });
         out.lines.extend(row);
     } else {
-        out.lines.extend(list_tail(feed, w));
+        out.lines.extend(list_tail(feed, w, env.ctx.ascii));
     }
 }
 
@@ -291,12 +297,18 @@ pub fn rows(app: &App, username: &str, width: u16) -> ProfileRows {
             "user_unavailable" | "http_404" => out
                 .lines
                 .push(plain(&format!(" fatal: @{username} is not available"), w)),
-            other => out.lines.push(retry_hint(other, w)),
+            other => out.lines.push(retry_hint(other, w, app.prefs().ascii)),
         }
         return out;
     }
     let Some(resp) = &state.user else {
-        out.lines.push(plain(" ┊ (loading...)", w));
+        out.lines.push(plain(
+            &format!(
+                " {} (loading...)",
+                crate::ui::ascii::pick(app.prefs().ascii, "┊", ":")
+            ),
+            w,
+        ));
         return out;
     };
 

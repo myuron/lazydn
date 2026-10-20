@@ -1175,3 +1175,51 @@ fn failed_refresh_of_a_profile_list_with_a_next_cursor_shows_neither_root_nor_er
     );
     assert_eq!(app.toast().map(|t| t.text.as_str()), Some("http_500"));
 }
+
+#[test]
+fn the_follow_list_holds_only_ascii_in_ascii_mode() {
+    let terminal = render(&with_ascii(people_app()));
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (4, 28)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_pinned_heading_and_the_commit_list_hold_only_ascii_in_ascii_mode() {
+    let app = with_ascii(profile_with(
+        signed_in(120, 40),
+        "alice",
+        pinned_resp(),
+        posts("p", 0, 2, "alice"),
+        None,
+    ));
+    let terminal = render(&app);
+    let buffer = terminal.backend().buffer();
+    let pinned = (0..buffer.area.height)
+        .find(|y| row_text(buffer, *y).contains("Pinned"))
+        .expect("no pinned heading");
+    assert!(
+        row_text(buffer, pinned).contains("# Pinned"),
+        "{}",
+        row_text(buffer, pinned)
+    );
+    assert_eq!(
+        non_ascii_cells(&terminal, (21, 87), (pinned, 38)),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_loading_and_failed_profiles_hold_only_ascii_in_ascii_mode() {
+    let mut loading = signed_in(120, 24);
+    open_profile(&mut loading, "bob");
+    let failed = failed_profile("rate_limited", None, 120, 24);
+    for app in [loading, failed] {
+        let terminal = render(&with_ascii(app));
+        assert_eq!(
+            non_ascii_cells(&terminal, (21, 87), (1, 22)),
+            Vec::<String>::new()
+        );
+    }
+}
