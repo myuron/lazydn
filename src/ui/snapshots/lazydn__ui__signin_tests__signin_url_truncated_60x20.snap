@@ -1,0 +1,24 @@
+---
+source: src/ui/signin_tests.rs
+expression: terminal.backend()
+---
+"╔ Sign in to /dev/null ════════════════════════════════════╗"
+"║                                                          ║"
+"║ 1. Key      /home/user/.config/lazydn/id_ed25519         ║"
+"║             ✓ ready                                      ║"
+"║             SHA256:KhVovNmj/HaIYLFS2Thqiu7ov5FlDlXpnntLq ║"
+"║             nfTL0I                                       ║"
+"║ 2. Approve  open this URL in your browser:               ║"
+"║             https://dev-null.sh/mobile/authorize?fingerp ║"
+"║             rint=SHA256%3AKhVovNmj%2FHaIYLFS2Thqiu7ov5Fl ║"
+"║             DlXpnntLqnfTL0I&device_name=lazydn+on+testho ║"
+"║             st&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK ║"
+"║             1t8URWbuGJSstw-cM&code_challenge_method=S256 ║"
+"║             &state=0123456789abcdef0123456789abcdef&redi ║"
+"║             rect_uri=devnull%3A%2F%2Flazydn%2Fcallback&… ║"
+"║             Ctrl+O open browser   Ctrl+Y copy URL        ║"
+"║ 3. Code     ▏                                            ║"
+"║             paste the devnull:// URL or the code         ║"
+"║                                                          ║"
+"║             Enter submit    Esc continue as guest        ║"
+"╚══════════════════════════════════════════════════════════╝"

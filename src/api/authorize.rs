@@ -49,3 +49,6 @@ pub fn authorize_url(
         .append_pair("redirect_uri", redirect_uri);
     Ok(url)
 }
+
+/// Where the approval page sends the user back to; the dialog expects a pasted URL of this shape.
+pub const REDIRECT_URI: &str = "devnull://lazydn/callback";

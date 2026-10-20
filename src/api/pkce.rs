@@ -6,13 +6,22 @@ use ssh_key::rand_core::{OsRng, RngCore};
 const UNRESERVED: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-";
 const VERIFIER_LEN: usize = 64;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 /// A PKCE verifier and its challenge; make one per sign-in attempt and keep the verifier until `register_device`.
 pub struct Pkce {
     /// The secret sent when redeeming the code.
     pub verifier: String,
     /// Sent in the authorize URL.
     pub challenge: String,
+}
+
+impl std::fmt::Debug for Pkce {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pkce")
+            .field("verifier", &"<hidden>")
+            .field("challenge", &self.challenge)
+            .finish()
+    }
 }
 
 impl Pkce {

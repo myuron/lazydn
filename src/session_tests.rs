@@ -494,7 +494,13 @@ fn unreadable(error: KeyError) -> App {
         error,
         path: "/home/u/.config/lazydn/id_ed25519".into(),
     };
-    let mut app = App::with_key_status(Session::Guest, NOW, UtcOffset::UTC, status);
+    let mut app = App::with_key_status(
+        Session::Guest,
+        NOW,
+        UtcOffset::UTC,
+        status,
+        "/home/user/.config/lazydn/id_ed25519".into(),
+    );
     app.update(Action::Resize(120, 40));
     app
 }
@@ -548,7 +554,13 @@ fn a_missing_or_usable_key_starts_without_a_toast() {
         (Session::Guest, KeyStatus::Absent),
         (Session::Restoring, KeyStatus::Present),
     ] {
-        let app = App::with_key_status(session.clone(), NOW, UtcOffset::UTC, status);
+        let app = App::with_key_status(
+            session.clone(),
+            NOW,
+            UtcOffset::UTC,
+            status,
+            "/home/user/.config/lazydn/id_ed25519".into(),
+        );
         assert_eq!(app.toast(), None);
         assert_eq!(app.session(), &session);
     }

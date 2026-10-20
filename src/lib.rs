@@ -11,6 +11,8 @@ pub mod notifications;
 pub mod profile;
 pub mod runtime;
 pub mod settings;
+pub mod signin;
+pub mod text;
 pub mod thread;
 pub mod timefmt;
 pub mod ui;
@@ -27,6 +29,10 @@ mod profile_tests;
 mod session_tests;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod signin_flow_tests;
+#[cfg(test)]
+mod signin_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

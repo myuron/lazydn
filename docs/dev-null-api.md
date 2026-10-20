@@ -471,6 +471,6 @@ commit に star を付ける、または外します。
 ## lazydn での使い方
 
 - **読み取りだけ**なら、公開 API で足ります。プロフィール、ユーザーの commit、フォロー関係、commit 1 件を取得できます。ただし、タイムライン（`/v1/log/*`）、返信一覧、通知には署名が必要です。
-- **フル機能**を使うには、SSH 鍵を作り、デバイス登録フローで承認を受けたうえで、全リクエストに署名します。ただし、Web 側で `code` を発行する承認画面の仕様（リダイレクト先など）は、この API の範囲外です。`routes/web.php` の mobile authorization 周りを別途調べる必要があります。
+- **フル機能**を使うには、SSH 鍵を作り、デバイス登録フローで承認を受けたうえで、全リクエストに署名します。承認画面は Web 側の `GET /mobile/authorize` で、パラメータは `fingerprint`、`device_name`（100 文字まで）、`code_challenge`、`code_challenge_method=S256`、`state`、`redirect_uri` です。`redirect_uri` は `devnull://` で始まる必要があり、承認すると `?code=<64 文字の 16 進数>&state=…` 付きでそこへリダイレクトされます（キャンセルなら `error=access_denied`）。code の有効期限は 5 分で、1 回だけ使えます。
 - **投稿だけ**なら、GitHub に登録済みの SSH 鍵を使って CLI 方式（`/cli/key-lookups` → `/cli/commits`）でもできます。デバイス登録は必要ありません。
 - 署名には `ssh-keygen -Y sign -n <namespace>` 相当の SSHSIG 形式を使います。Rust なら `ssh-key` crate の `SshSig` で作れます。

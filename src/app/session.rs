@@ -1,5 +1,5 @@
 use super::notifications::ME_INTERVAL_SECS;
-use super::{App, LogTab, Me, Modal, Pane, Screen, Session, ToastKind, toast};
+use super::{App, LogTab, Me, Pane, Screen, Session, ToastKind, toast};
 use crate::action::{Action, Effect};
 use crate::feed::{Feed, FeedKey, ReqId};
 use crate::model::MeResponse;
@@ -14,6 +14,8 @@ impl App {
         match failure.code.as_str() {
             // The approval was revoked, whichever request noticed it first; a guest has nothing to lose.
             "device_not_approved" if matches!(self.session, Session::Guest) => Some(Vec::new()),
+            // A request that left before the latest sign-in was signed by a device that has since been replaced.
+            "device_not_approved" if self.sent_before_sign_in(action) => Some(Vec::new()),
             "device_not_approved" => Some(self.return_to_guest(toast::failure_text(failure))),
             "invalid_signature" if matches!(self.session, Session::Restoring) => {
                 Some(self.return_to_guest(toast::failure_text(failure)))
@@ -22,9 +24,27 @@ impl App {
         }
     }
 
+    fn sent_before_sign_in(&self, action: &Action) -> bool {
+        match (self.sign_in_boundary, toast::req_in(action)) {
+            (Some(boundary), Some(req)) => req.0 <= boundary.0,
+            _ => false,
+        }
+    }
+
     /// Drops everything the account had loaded, since the server no longer vouches for it.
     fn return_to_guest(&mut self, toast_text: String) -> Vec<Effect> {
         self.session = Session::Guest;
+        self.reset_account_data();
+        self.show(Screen::Log(LogTab::Latest));
+        self.show_toast(ToastKind::Error, toast_text);
+        self.reconcile_scroll();
+        let mut effects = vec![Effect::UseGuestClient];
+        effects.extend(self.open_sign_in());
+        effects
+    }
+
+    /// Empties everything that belongs to one account or to the guest view, and the way back to it.
+    pub(super) fn reset_account_data(&mut self) {
         self.feeds = FeedKey::ALL
             .into_iter()
             .map(|k| (k, Feed::default()))
@@ -41,11 +61,6 @@ impl App {
         self.history.clear();
         self.g_pending = false;
         self.focus = Pane::Main;
-        self.show(Screen::Log(LogTab::Latest));
-        self.modal = Some(Modal::SignIn);
-        self.show_toast(ToastKind::Error, toast_text);
-        self.reconcile_scroll();
-        vec![Effect::UseGuestClient]
     }
 
     /// Fetches for the screen the user is on without moving them, since they may have left the first one.

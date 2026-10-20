@@ -48,11 +48,11 @@ pub async fn execute(client: &ApiClient, effect: Effect) -> Vec<Action> {
     }
 }
 
-fn status(rate: Option<RateLimit>, online: bool) -> Action {
+pub(super) fn status(rate: Option<RateLimit>, online: bool) -> Action {
     Action::ApiStatus { rate, online }
 }
 
-fn failure_of(error: &ApiError) -> Failure {
+pub(super) fn failure_of(error: &ApiError) -> Failure {
     Failure {
         code: error.code(),
         retry_after: match &error.kind {
@@ -64,7 +64,13 @@ fn failure_of(error: &ApiError) -> Failure {
 
 async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
     let outcome: Outcome = match effect {
-        Effect::Quit | Effect::UseGuestClient | Effect::UseSignedClient => return None,
+        Effect::Quit
+        | Effect::UseGuestClient
+        | Effect::UseSignedClient
+        | Effect::PrepareSignIn { .. }
+        | Effect::OpenUrl(_)
+        | Effect::CopyToClipboard(_)
+        | Effect::RegisterDevice { .. } => return None,
         Effect::FetchLog { tab, cursor, req } => client
             .log(log_name(*tab), None, cursor.as_deref())
             .await
@@ -295,7 +301,11 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         Effect::PollLog { .. }
         | Effect::Quit
         | Effect::UseGuestClient
-        | Effect::UseSignedClient => return None,
+        | Effect::UseSignedClient
+        | Effect::PrepareSignIn { .. }
+        | Effect::OpenUrl(_)
+        | Effect::CopyToClipboard(_)
+        | Effect::RegisterDevice { .. } => return None,
     })
 }
 

@@ -8,11 +8,13 @@ mod notifications;
 mod profile;
 mod session;
 mod settings;
+mod signin;
 mod status;
 mod thread;
 mod toast;
 
 pub use key_status::KeyStatus;
+pub use signin::{SignInState, SignInStep};
 pub use status::ConnState;
 pub use toast::{Toast, ToastKind};
 
@@ -219,6 +221,10 @@ pub struct App {
     rate: Option<RateLimit>,
     host_label: Option<String>,
     key_status: KeyStatus,
+    sign_in: SignInState,
+    /// The newest request id at the last sign-in; a rejection of an older one says nothing about the new device.
+    sign_in_boundary: Option<ReqId>,
+    key_path: std::path::PathBuf,
     /// Consecutive failed attempts to confirm the session; sets the retry delay while restoring.
     restore_failures: u32,
 }
@@ -231,7 +237,13 @@ impl App {
         } else {
             KeyStatus::Absent
         };
-        Self::with_key_status(session, now, local_offset, key_status)
+        Self::with_key_status(
+            session,
+            now,
+            local_offset,
+            key_status,
+            std::path::PathBuf::new(),
+        )
     }
 
     /// Starts as `new` does, and tells the app what main found when it looked for the device key.
@@ -240,6 +252,7 @@ impl App {
         now: OffsetDateTime,
         local_offset: UtcOffset,
         key_status: KeyStatus,
+        key_path: std::path::PathBuf,
     ) -> Self {
         let guest = matches!(session, Session::Guest);
         let mut app = Self {
@@ -277,6 +290,9 @@ impl App {
             rate: None,
             host_label: None,
             key_status,
+            sign_in: SignInState::default(),
+            sign_in_boundary: None,
+            key_path,
             restore_failures: 0,
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
@@ -296,13 +312,18 @@ impl App {
             Action::Quit => return vec![Effect::Quit],
             Action::Resize(w, h) => self.size = (w, h),
             Action::Init => {
+                if self.modal == Some(Modal::SignIn) {
+                    effects.extend(self.open_sign_in());
+                }
                 effects.extend(self.request_me());
                 effects.extend(self.entry_fetch());
             }
             Action::Open(screen) => effects.extend(self.open(screen)),
             Action::Goto(screen) => {
                 self.g_pending = false;
-                self.goto(screen);
+                if let Err(opened) = self.goto(screen) {
+                    effects.extend(opened);
+                }
                 effects.extend(self.enter_fetch());
             }
             Action::Back => {
@@ -344,28 +365,29 @@ impl App {
                     NavItem::Saved => Screen::Saved,
                     NavItem::Settings => Screen::Settings,
                 };
-                if self.goto(target) {
-                    self.focus = Pane::Main;
+                match self.goto(target) {
+                    Ok(()) => self.focus = Pane::Main,
+                    Err(opened) => effects.extend(opened),
                 }
                 effects.extend(self.enter_fetch());
             }
             Action::SwitchTab(tab) => {
                 if matches!(self.screen, Screen::Log(_)) {
-                    self.goto_tab(tab);
+                    effects.extend(self.goto_tab(tab));
                     effects.extend(self.entry_fetch());
                 }
             }
             Action::OpenHelp => self.modal = Some(Modal::Help),
             Action::OpenSignIn => {
-                if !matches!(self.session, Session::Restoring) {
-                    self.modal = Some(Modal::SignIn);
+                if matches!(self.session, Session::Guest) {
+                    effects.extend(self.open_sign_in());
                 }
             }
 
             Action::CloseModal => self.modal = None,
             Action::Commit => {
                 if matches!(self.session, Session::Guest) {
-                    self.modal = Some(Modal::SignIn);
+                    effects.extend(self.open_sign_in());
                 }
             }
             Action::Tick(now) => {
@@ -514,6 +536,21 @@ impl App {
             Action::SwitchProfileTab(tab) => effects.extend(self.profile_switch_tab(tab)),
             Action::SwitchConnTab(tab) => effects.extend(self.conn_switch_tab(tab)),
             Action::ApiStatus { rate, online } => self.apply_api_status(rate, online),
+            sign_in_action @ (Action::Paste(_)
+            | Action::SignInInput(_)
+            | Action::SignInBackspace
+            | Action::SignInClear
+            | Action::SignInSubmit
+            | Action::SignInRefresh
+            | Action::SignInOpenBrowser
+            | Action::SignInCopyUrl
+            | Action::SignInPrepared { .. }
+            | Action::SignInKeyFailed { .. }
+            | Action::SignInKeyMissing
+            | Action::SignInPrepareFailed { .. }
+            | Action::SignInFailed { .. }
+            | Action::DeviceRegistered { .. }
+            | Action::Notice { .. }) => effects.extend(self.on_sign_in_action(sign_in_action)),
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
                 if let Some(state) = self.threads.get_mut(&id)
@@ -601,23 +638,21 @@ impl App {
         ) || matches!(screen, Screen::Profile(u) if u.is_empty())
     }
 
-    /// Returns false after opening the sign-in dialog when a guest targets a protected screen.
-    fn guard_sign_in(&mut self, screen: &Screen) -> bool {
+    /// `Err` carries the effects of opening the sign-in dialog when a guest targets a protected screen.
+    fn guard_sign_in(&mut self, screen: &Screen) -> Result<(), Vec<Effect>> {
         if self.needs_sign_in(screen) {
             // The dialog would ask for a key that is already being checked.
             if matches!(self.session, Session::Guest) {
-                self.modal = Some(Modal::SignIn);
+                return Err(self.open_sign_in());
             }
-            return false;
+            return Err(Vec::new());
         }
-        true
+        Ok(())
     }
 
-    /// Replaces the screen and clears the history; returns false when the sign-in dialog opened instead.
-    fn goto(&mut self, screen: Screen) -> bool {
-        if !self.guard_sign_in(&screen) {
-            return false;
-        }
+    /// Replaces the screen and clears the history; `Err` when the sign-in dialog opened instead.
+    pub(super) fn goto(&mut self, screen: Screen) -> Result<(), Vec<Effect>> {
+        self.guard_sign_in(&screen)?;
         self.history.clear();
         // No history entry can lead back to a thread now, so its state would only go stale.
         self.threads.clear();
@@ -628,13 +663,17 @@ impl App {
             feed.selected = 0;
             feed.scroll = 0;
         }
-        true
+        Ok(())
     }
 
-    fn goto_tab(&mut self, tab: LogTab) {
+    fn goto_tab(&mut self, tab: LogTab) -> Vec<Effect> {
         let screen = Screen::Log(tab);
-        if self.guard_sign_in(&screen) {
-            self.screen = screen;
+        match self.guard_sign_in(&screen) {
+            Ok(()) => {
+                self.screen = screen;
+                Vec::new()
+            }
+            Err(opened) => opened,
         }
     }
 
@@ -748,8 +787,8 @@ impl App {
 
 impl App {
     fn open(&mut self, screen: Screen) -> Vec<Effect> {
-        if !self.guard_sign_in(&screen) {
-            return Vec::new();
+        if let Err(opened) = self.guard_sign_in(&screen) {
+            return opened;
         }
         self.history.push(self.screen.clone());
         self.show(screen);

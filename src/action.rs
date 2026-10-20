@@ -1,12 +1,43 @@
 use time::OffsetDateTime;
 
 use crate::api::client::RateLimit;
-use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab};
+use crate::api::keys::KeyError;
+use crate::api::pkce::Pkce;
+use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::model::{
     GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User, UserResponse,
 };
 use crate::notifications::Filter;
+
+/// A value that `Debug` never prints, so that logs and panic messages cannot leak it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    /// The hidden text, for the one place that sends it.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for Secret {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for Secret {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(..)")
+    }
+}
 
 /// Why a request failed, as the executor reports it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,6 +223,52 @@ pub enum Action {
         rate: Option<RateLimit>,
         online: bool,
     },
+    /// A bracketed paste. Only the sign-in dialog takes it; elsewhere it is dropped.
+    Paste(String),
+    /// A character typed into the Code field of the sign-in dialog.
+    SignInInput(char),
+    SignInBackspace,
+    /// `Ctrl+U` in the dialog: empties the Code field.
+    SignInClear,
+    /// `Enter` in the dialog; what it does depends on the step.
+    SignInSubmit,
+    /// `Ctrl+R` in the dialog: reads the key again and makes a new approval URL.
+    SignInRefresh,
+    /// `Ctrl+O` in the dialog.
+    SignInOpenBrowser,
+    /// `Ctrl+Y` in the dialog.
+    SignInCopyUrl,
+    /// The executor read or created the key and built the approval URL.
+    SignInPrepared {
+        fingerprint: String,
+        url: String,
+        pkce: Pkce,
+        state: String,
+        /// Whether this call made the key file.
+        created: bool,
+    },
+    /// The key could not be read or created.
+    SignInKeyFailed {
+        error: KeyError,
+    },
+    /// `prepare(false)` found no key file, so the dialog goes back to offering to create one.
+    SignInKeyMissing,
+    /// The approval URL could not be built, so the dialog can only offer to try again.
+    SignInPrepareFailed {
+        failure: Failure,
+    },
+    /// Registering the device failed: the server refused the code, or the request did not get through.
+    SignInFailed {
+        failure: Failure,
+    },
+    DeviceRegistered {
+        response: Box<MeResponse>,
+    },
+    /// A message from the executor for the toast, such as a browser that would not start.
+    Notice {
+        kind: ToastKind,
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -265,5 +342,18 @@ pub enum Effect {
         types: String,
         cursor: Option<String>,
         req: ReqId,
+    },
+    /// Reads the device key, or makes it when `create` is set, then builds the approval URL.
+    PrepareSignIn {
+        create: bool,
+    },
+    /// Starts the browser; only ever follows an explicit key press.
+    OpenUrl(String),
+    /// Writes the text to the terminal clipboard (OSC 52).
+    CopyToClipboard(String),
+    /// Redeems the approval code.
+    RegisterDevice {
+        code: String,
+        verifier: Secret,
     },
 }

@@ -50,7 +50,7 @@ pub fn draw(app: &App, frame: &mut Frame) {
     statusline::render(app, frame, panes.status);
     match app.modal() {
         Some(Modal::Help) => help::render(frame, area),
-        Some(Modal::SignIn) => signin::render(frame, area),
+        Some(Modal::SignIn) => signin::render(app, frame, area),
         None => {}
     }
     toast::render(app, frame, area, panes.status);
@@ -66,6 +66,8 @@ mod notifications_tests;
 mod profile_tests;
 #[cfg(test)]
 mod settings_tests;
+#[cfg(test)]
+mod signin_tests;
 #[cfg(test)]
 mod status_tests;
 #[cfg(test)]

@@ -5,6 +5,8 @@ use time::OffsetDateTime;
 use super::App;
 use crate::action::{Action, Failure};
 use crate::api::keys::KeyError;
+use crate::feed::ReqId;
+use crate::text::is_unsafe_char;
 
 /// Picks the symbol and color of a toast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,10 +38,10 @@ const TOAST_SECS: i64 = 3;
 /// Server strings are cut here so that one cannot fill the screen.
 const TOAST_CODE_MAX: usize = 64;
 
-/// Drops control characters before cutting, so that they cannot eat into the length.
-fn clean(text: &str) -> String {
+/// Drops control and bidi characters before cutting, so that they cannot eat into the length.
+pub(super) fn clean(text: &str) -> String {
     text.chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !is_unsafe_char(*c))
         .take(TOAST_CODE_MAX)
         .collect()
 }
@@ -59,7 +61,7 @@ fn clean_path(path: &Path) -> String {
     path.display()
         .to_string()
         .chars()
-        .filter(|c| !c.is_control())
+        .filter(|c| !is_unsafe_char(*c))
         .collect()
 }
 
@@ -94,6 +96,24 @@ pub(super) fn failure_in(action: &Action) -> Option<&Failure> {
         | Action::GroupFailed { failure, .. }
         | Action::MutedFailed { failure, .. }
         | Action::BlockedFailed { failure, .. } => Some(failure),
+        _ => None,
+    }
+}
+
+/// The request a `*Failed` action answers; `None` for every other action.
+pub(super) fn req_in(action: &Action) -> Option<ReqId> {
+    match action {
+        Action::FeedFailed { req, .. }
+        | Action::ThreadFailed { req, .. }
+        | Action::RepliesFailed { req, .. }
+        | Action::UserFailed { req, .. }
+        | Action::ProfileFeedFailed { req, .. }
+        | Action::ConnectionsFailed { req, .. }
+        | Action::MeFailed { req, .. }
+        | Action::NotificationsFailed { req, .. }
+        | Action::GroupFailed { req, .. }
+        | Action::MutedFailed { req, .. }
+        | Action::BlockedFailed { req, .. } => Some(*req),
         _ => None,
     }
 }

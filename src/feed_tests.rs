@@ -108,6 +108,10 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::FetchNotificationGroup { .. }
         | Effect::UseGuestClient
         | Effect::UseSignedClient
+        | Effect::PrepareSignIn { .. }
+        | Effect::OpenUrl(_)
+        | Effect::CopyToClipboard(_)
+        | Effect::RegisterDevice { .. }
         | Effect::Quit => None,
     }
 }

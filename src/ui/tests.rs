@@ -1,8 +1,10 @@
 use crossterm::event::KeyCode;
 
-use crate::app::Screen;
+use crate::action::Action;
+use crate::app::{App, KeyStatus, Screen, Session};
 use crate::test_support::*;
 use crate::ui::theme::PRIMARY;
+use time::UtcOffset;
 
 macro_rules! snapshot {
     ($name:literal, $app:expr) => {{
@@ -46,8 +48,16 @@ fn s06_nav_focused_draws_nav_thick_and_main_thin() {
 }
 
 #[test]
-fn s07_guest_start_shows_sign_in_dialog_in_unfilled_state() {
-    snapshot!("guest_signin_dialog", guest(120, 40));
+fn s07_guest_start_without_a_key_shows_sign_in_dialog_offering_to_create_it() {
+    let mut app = App::with_key_status(
+        Session::Guest,
+        NOW,
+        UtcOffset::UTC,
+        KeyStatus::Absent,
+        "/home/user/.config/lazydn/id_ed25519".into(),
+    );
+    app.update(Action::Resize(120, 40));
+    snapshot!("guest_signin_dialog", app);
 }
 
 #[test]

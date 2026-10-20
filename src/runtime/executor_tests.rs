@@ -516,6 +516,13 @@ async fn effects_without_an_api_call_produce_no_actions_and_no_requests() {
         Effect::Quit,
         Effect::UseGuestClient,
         Effect::UseSignedClient,
+        Effect::PrepareSignIn { create: false },
+        Effect::OpenUrl("https://example.invalid/".into()),
+        Effect::CopyToClipboard("text".into()),
+        Effect::RegisterDevice {
+            code: "c".into(),
+            verifier: "v".into(),
+        },
     ] {
         assert_eq!(execute(&client, effect).await, Vec::<Action>::new());
     }

@@ -498,24 +498,39 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 起動したときに鍵が未登録なら、Log をゲストとして表示し、Nav に `[ L  Sign in ]` を出します。`L` を押すか、サインインが必要な操作をすると、次のダイアログを開きます。
 
 ```text
-╔ Sign in to /dev/null ════════════════════════════════════════╗
-║                                                              ║
-║ 1. Key            ~/.config/lazydn/id_ed25519   ✓ created    ║
-║ 2. Approve        open this URL in your browser:             ║
-║                   https://dev-null.sh/mobile/authorize?...   ║
-║                   [o] open browser   [y] copy URL            ║
-║ 3. Code           ________________________                   ║
-║                                                              ║
-║                   Enter submit    Esc continue as guest      ║
-╚══════════════════════════════════════════════════════════════╝
+╔ Sign in to /dev/null ═══════════════════════════════════════════╗
+║                                                                 ║
+║ 1. Key      ~/.config/lazydn/id_ed25519  ✓ ready                ║
+║             SHA256:KhVovNmj/HaIYLFS2Thqiu7ov5FlDlXpnntLqnfTL0I  ║
+║ 2. Approve  open this URL in your browser:                      ║
+║             https://dev-null.sh/mobile/authorize?fingerprint=SH ║
+║             A256%3A…&code_challenge=…&state=…&redirect_uri=…    ║
+║             Ctrl+O open browser   Ctrl+Y copy URL               ║
+║ 3. Code     ▏                                                   ║
+║             paste the devnull:// URL or the code                ║
+║                                                                 ║
+║             Enter submit    Esc continue as guest               ║
+╚═════════════════════════════════════════════════════════════════╝
 ```
 
-1. **Key**: `~/.config/lazydn/id_ed25519` がなければ作ります。
-2. **Approve**: PKCE の `code_challenge` を付けた承認ページの URL を表示します。`o` でブラウザを開き、`y` で URL をコピーします。
-3. **Code**: Web で受け取った `code` を貼り付けて Enter を押すと、`POST /v1/devices` を呼びます。成功すると、Log の Following を開き直します。
+1. **Key**: 鍵のパスは `<設定ディレクトリ>/id_ed25519` です。設定ディレクトリの既定は `$XDG_CONFIG_HOME/lazydn`（なければ `~/.config/lazydn`）で、環境変数 `LAZYDN_CONFIG_DIR` で変えられます。
+   - 鍵がまだなければ、ダイアログを開いただけでは作りません。`1. Key  <path>  press Enter to create` と表示し、Enter を押したときに作ります（作ったときは `✓ created`）。
+   - 鍵があれば、ダイアログを開いたときに読んで、承認の URL まで用意します。
+   - 鍵が使えないとき（他のユーザーが読める、暗号化されている、ed25519 でないなど）は、理由を表示します。`Enter` か `Ctrl+R` で鍵を読み直せます。鍵を作れなかったとき（書き込めないなど）も同じです。
+2. **Approve**: PKCE の `code_challenge` を付けた承認ページの URL を、幅に合わせて折り返して表示します。URL のホストは、接続先（`LAZYDN_BASE_URL`）と同じです。`Ctrl+O` でブラウザを開き、`Ctrl+Y` で URL をコピーします。
+   - `Ctrl+Y` は、OSC 52 のエスケープシーケンスを端末に書きます。端末が受け取ったかは確かめられないので、トーストは `i Copy sent to the terminal (OSC 52)` とします。tmux や screen の中では、OSC 52 をパススルーする設定が必要です。
+   - ブラウザを開くのは、`Ctrl+O` を押したときだけです。開く前に、URL が https（接続先がループバックのときは http）で、ホストが接続先と同じかを確かめます。
+   - `Ctrl+R` で、新しい URL（新しい PKCE と state）を作ります。
+3. **Code**: 承認が終わると、ブラウザは `devnull://lazydn/callback?code=…&state=…` に移動します。OS のスキームハンドラは登録しないので、この URL（または `code` だけ）を Code 欄に貼り付けて Enter を押すと、`POST /v1/devices` を呼びます。成功すると、ゲストのときに取ったデータを捨てて、Log の Following を開き直します。
+   - 貼り付けは、端末の bracketed paste で受け取ります。改行などの制御文字は除き、長さは 2048 文字までです。Code 欄に打ち込む文字も、2048 文字で止まります。ダイアログの外での貼り付けは無視します。
+   - URL の場合は、`state` が承認の URL のものと一致することを確かめます。一致しなければ `state mismatch — approve again`、`error=access_denied` なら `approval was cancelled`、`code` がなければ `no code in the URL — paste the whole devnull:// URL` と表示します。
+   - `code` は 64 文字の小文字の 16 進数です。そうでなければ送りません。前後の空白は除きます。空のときは何もしません。
 
-- `400 invalid_grant` が返ったときは、`code` を入力し直してもらいます。
-- 承認ページのリダイレクト先の仕様が分かれば、ローカルにサーバーを立てて `code` を自動で受け取る方式に変えます（[dev-null-api.md の「lazydn での使い方」](./dev-null-api.md#lazydn-での使い方) を参照）。
+- 文字の入力中は、`Esc` と `Ctrl+C` 以外の文字キーを Code 欄の入力として扱います。`Backspace`（長押しを含む）で 1 文字、`Ctrl+U` で全部を消します。
+- `Esc` でダイアログを閉じても、URL と入力中の Code は残ります。開き直しても、PKCE と state は作り直しません。
+- 送信中は `Signing in…` を出し、Enter を重ねて押しても送りません。
+- `400 invalid_grant` が返ったときは、`the code was not accepted — approve again and paste the new URL` と表示し、新しい URL を用意し直します。Code 欄の入力は残します。ほかの失敗では URL を変えずに、Enter でもう一度送れます。
+- OS のスキームハンドラ（`devnull://`）の登録は、将来の課題です。いまは貼り付けで受け取ります。
 
 **ゲストのとき**の Nav と Aside:
 
@@ -680,7 +695,7 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 | --- | --- | --- |
 | 成功 | `✓`（緑） | `✓ Committed a1b2c3d (in review)` |
 | エラー | `✗`（赤） | `✗ rate_limited: retry in 12s` |
-| 情報 | `i`（primary 色） | `i Link copied` |
+| 情報 | `i`（primary 色） | `i Copy sent to the terminal (OSC 52)` |
 
 - エラーは API の `code` ごとに文言を決めます（[dev-null-api.md のエラー](./dev-null-api.md#エラー) を参照）。`429` のときは、`Retry-After` の秒数を表示します。
 - `401 invalid_signature` は、端末の時計のずれが原因のことがあります。そのため、`check your system clock` を添えます。

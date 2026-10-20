@@ -1,11 +1,55 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::action::Action;
 use crate::app::{App, ConnTab, LogTab, Modal, Pane, ProfileTab, Screen, Session, SettingsTab};
 use crate::layout::LayoutMode;
 use crate::notifications::Filter;
 
+/// Maps any terminal event to an action; a paste only reaches the sign-in dialog.
+pub fn map_event(app: &App, event: &Event) -> Option<Action> {
+    match event {
+        Event::Key(key) => map_key(app, *key),
+        Event::Paste(text) if app.modal() == Some(Modal::SignIn) => {
+            Some(Action::Paste(text.clone()))
+        }
+        Event::Resize(w, h) => Some(Action::Resize(*w, *h)),
+        _ => None,
+    }
+}
+
+/// Handled before the shared Ctrl and Press filters: the dialog reads a held Backspace, and Ctrl+letter means
+/// something here that it means nowhere else.
+fn map_sign_in_key(key: KeyEvent) -> Option<Action> {
+    let pressed = key.kind == KeyEventKind::Press;
+    let typed = key.kind != KeyEventKind::Release;
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        let KeyCode::Char(c) = key.code else {
+            return None;
+        };
+        return match c {
+            'c' if pressed => Some(Action::Quit),
+            'o' if pressed => Some(Action::SignInOpenBrowser),
+            'y' if pressed => Some(Action::SignInCopyUrl),
+            'u' if typed => Some(Action::SignInClear),
+            'r' if pressed => Some(Action::SignInRefresh),
+            _ => None,
+        };
+    }
+    match key.code {
+        KeyCode::Esc if pressed => Some(Action::CloseModal),
+        KeyCode::Enter if pressed => Some(Action::SignInSubmit),
+        KeyCode::Backspace if typed => Some(Action::SignInBackspace),
+        KeyCode::Char(c) if typed && !key.modifiers.contains(KeyModifiers::ALT) => {
+            Some(Action::SignInInput(c))
+        }
+        _ => None,
+    }
+}
+
 pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
+    if app.modal() == Some(Modal::SignIn) {
+        return map_sign_in_key(key);
+    }
     if key.kind != KeyEventKind::Press {
         return None;
     }
@@ -13,16 +57,12 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if ctrl {
         return (key.code == KeyCode::Char('c')).then_some(Action::Quit);
     }
-    match app.modal() {
-        Some(Modal::SignIn) => return (key.code == KeyCode::Esc).then_some(Action::CloseModal),
-        Some(Modal::Help) => {
-            return match key.code {
-                KeyCode::Esc | KeyCode::Char('?') => Some(Action::CloseModal),
-                KeyCode::Char('Q') => Some(Action::Quit),
-                _ => None,
-            };
-        }
-        None => {}
+    if app.modal() == Some(Modal::Help) {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Char('?') => Some(Action::CloseModal),
+            KeyCode::Char('Q') => Some(Action::Quit),
+            _ => None,
+        };
     }
     if key.code == KeyCode::Char('Q') {
         return Some(Action::Quit);

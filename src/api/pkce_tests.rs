@@ -62,3 +62,12 @@ fn state_is_32_lowercase_hex_and_unique() {
     assert!(is_lower_hex32(&b), "{b:?}");
     assert_ne!(a, b);
 }
+
+#[test]
+fn debug_output_hides_the_verifier() {
+    let pkce = Pkce::generate();
+
+    let shown = format!("{pkce:?}");
+
+    assert!(!shown.contains(&pkce.verifier), "{shown}");
+}
