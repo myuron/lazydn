@@ -1403,3 +1403,292 @@ async fn saving_and_loading_drafts_are_not_api_calls() {
     }
     assert!(received(&server).await.is_empty());
 }
+
+// --- 6. star, save and pastel ------------------------------------------------------------------
+
+fn pastel_response() -> crate::model::PastelResponse {
+    crate::model::PastelResponse {
+        data: posted_commit(),
+        pasteis_remaining: 6,
+        pasteis_resets_at: time::macros::datetime!(2026-10-21 00:00 UTC),
+        author_pasteis_received: Some(4),
+    }
+}
+
+fn pastel_body() -> Vec<u8> {
+    let mut value = parse::<serde_json::Value>(POSTED);
+    value["pasteis_remaining"] = serde_json::json!(6);
+    value["pasteis_resets_at"] = serde_json::json!("2026-10-21T00:00:00Z");
+    value["author_pasteis_received"] = serde_json::json!(4);
+    value.to_string().into_bytes()
+}
+
+fn star(on: bool) -> Effect {
+    Effect::StarCommit {
+        id: "c-1".into(),
+        on,
+        req: REQ,
+    }
+}
+
+fn bookmark(on: bool) -> Effect {
+    Effect::BookmarkCommit {
+        id: "c-1".into(),
+        on,
+        req: REQ,
+    }
+}
+
+fn pastel() -> Effect {
+    Effect::GivePastel {
+        id: "c-1".into(),
+        req: REQ,
+    }
+}
+
+async fn serve_method(server: &MockServer, verb: &str, p: &str, response: ResponseTemplate) {
+    Mock::given(method(verb))
+        .and(path(p))
+        .respond_with(response)
+        .mount(server)
+        .await;
+}
+
+fn commit_answer() -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_raw(POSTED.as_bytes().to_vec(), "application/json")
+}
+
+#[tokio::test]
+async fn star_and_unstar_call_the_star_endpoint_with_post_and_delete_and_answer_with_the_commit() {
+    for (on, verb) in [(true, "POST"), (false, "DELETE")] {
+        let server = MockServer::start().await;
+        serve_method(&server, verb, "/api/v1/commits/c-1/star", commit_answer()).await;
+
+        let (results, status) = split(execute(&signed(&server), star(on)).await);
+
+        assert_eq!(
+            results,
+            vec![Action::StarDone {
+                id: "c-1".into(),
+                req: REQ,
+                commit: Box::new(posted_commit()),
+            }],
+            "{verb}"
+        );
+        assert_eq!(status, vec![ONLINE], "{verb}");
+        assert_eq!(received(&server).await.len(), 1, "{verb}");
+    }
+}
+
+#[tokio::test]
+async fn save_and_unsave_call_the_bookmark_endpoint_with_put_and_delete_and_answer_with_the_commit()
+{
+    for (on, verb) in [(true, "PUT"), (false, "DELETE")] {
+        let server = MockServer::start().await;
+        serve_method(
+            &server,
+            verb,
+            "/api/v1/commits/c-1/bookmark",
+            commit_answer(),
+        )
+        .await;
+
+        let (results, status) = split(execute(&signed(&server), bookmark(on)).await);
+
+        assert_eq!(
+            results,
+            vec![Action::BookmarkDone {
+                id: "c-1".into(),
+                req: REQ,
+                commit: Box::new(posted_commit()),
+            }],
+            "{verb}"
+        );
+        assert_eq!(status, vec![ONLINE], "{verb}");
+        assert_eq!(received(&server).await.len(), 1, "{verb}");
+    }
+}
+
+#[tokio::test]
+async fn a_pastel_posts_to_the_pasteis_endpoint_and_answers_with_the_allowance() {
+    let server = MockServer::start().await;
+    serve_method(
+        &server,
+        "POST",
+        "/api/v1/commits/c-1/pasteis",
+        ResponseTemplate::new(200).set_body_raw(pastel_body(), "application/json"),
+    )
+    .await;
+
+    let (results, status) = split(execute(&signed(&server), pastel()).await);
+
+    assert_eq!(
+        results,
+        vec![Action::PastelDone {
+            id: "c-1".into(),
+            req: REQ,
+            response: Box::new(pastel_response()),
+        }]
+    );
+    assert_eq!(status, vec![ONLINE]);
+    assert_eq!(received(&server).await.len(), 1);
+}
+
+fn failed_write(effect: &Effect, failure: Failure) -> Action {
+    match effect {
+        Effect::StarCommit { id, on, req } => Action::StarFailed {
+            id: id.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::BookmarkCommit { id, on, req } => Action::BookmarkFailed {
+            id: id.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::GivePastel { id, req } => Action::PastelFailed {
+            id: id.clone(),
+            req: *req,
+            failure,
+        },
+        other => panic!("not a write: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_refused_write_carries_the_code_and_the_message_of_the_server() {
+    let cases = [
+        (
+            star(true),
+            "POST",
+            "/api/v1/commits/c-1/star",
+            404,
+            "commit_unavailable",
+        ),
+        (
+            star(false),
+            "DELETE",
+            "/api/v1/commits/c-1/star",
+            404,
+            "commit_unavailable",
+        ),
+        (
+            bookmark(true),
+            "PUT",
+            "/api/v1/commits/c-1/bookmark",
+            404,
+            "commit_unavailable",
+        ),
+        (
+            bookmark(false),
+            "DELETE",
+            "/api/v1/commits/c-1/bookmark",
+            404,
+            "commit_unavailable",
+        ),
+        (
+            pastel(),
+            "POST",
+            "/api/v1/commits/c-1/pasteis",
+            422,
+            "pasteis_exhausted",
+        ),
+    ];
+    for (effect, verb, p, status, code) in cases {
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, error_body(status, code)).await;
+
+        let (results, online) = split(execute(&signed(&server), effect.clone()).await);
+
+        let failure = Failure {
+            code: code.into(),
+            retry_after: None,
+            message: Some("m".into()),
+        };
+        assert_eq!(results, vec![failed_write(&effect, failure)], "{effect:?}");
+        assert_eq!(online, vec![ONLINE], "{effect:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_rate_limited_star_carries_retry_after() {
+    let server = MockServer::start().await;
+    serve_method(
+        &server,
+        "POST",
+        "/api/v1/commits/c-1/star",
+        error_body(429, "rate_limited").insert_header("Retry-After", "9"),
+    )
+    .await;
+
+    let (results, _) = split(execute(&signed(&server), star(true)).await);
+
+    let failure = Failure {
+        code: "rate_limited".into(),
+        retry_after: Some(9),
+        message: Some("m".into()),
+    };
+    assert_eq!(results, vec![failed_write(&star(true), failure)]);
+}
+
+#[tokio::test]
+async fn a_write_that_cannot_reach_the_server_fails_as_network() {
+    for effect in [star(true), bookmark(true), pastel()] {
+        let actions = execute(&unreachable_client(), effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![
+                failed_write(&effect, Failure::new("network")),
+                Action::ApiStatus {
+                    rate: None,
+                    online: false
+                }
+            ],
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_guest_cannot_write_and_nothing_is_sent() {
+    let server = MockServer::start().await;
+    let guest = client_for(&server.uri(), false);
+
+    for effect in [star(true), bookmark(true), pastel()] {
+        let actions = execute(&guest, effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![failed_write(&effect, Failure::new("sign_in_required"))],
+            "{effect:?}"
+        );
+    }
+    assert!(received(&server).await.is_empty());
+}
+
+#[test]
+fn a_panicked_write_fails_into_its_failed_action_with_the_req() {
+    for effect in [star(true), bookmark(false), pastel()] {
+        assert_eq!(
+            failure_for(&effect, "panic"),
+            Some(failed_write(&effect, Failure::new("panic"))),
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn copying_a_link_is_not_an_api_call_and_has_no_failed_action() {
+    let server = MockServer::start().await;
+    let effect = Effect::CopyLink("https://dev-null.sh/@alice".into());
+
+    assert_eq!(
+        execute(&signed(&server), effect.clone()).await,
+        Vec::<Action>::new()
+    );
+    assert_eq!(failure_for(&effect, "panic"), None);
+    assert!(received(&server).await.is_empty());
+}

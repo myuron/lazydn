@@ -63,3 +63,5 @@ mod test_support;
 mod thread_tests;
 #[cfg(test)]
 mod toast_tests;
+#[cfg(test)]
+mod write_tests;

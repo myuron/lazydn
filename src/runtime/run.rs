@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::external::{Clipboard, Launcher, copy_text, open_url};
+use super::external::{Clipboard, Launcher, copy_link, copy_text, open_url};
 use crate::action::{Action, Effect};
 use crate::app::{App, LogTab};
 use crate::drafts::Drafts;
@@ -98,6 +98,7 @@ impl<E: Exec, L: Launcher, C: Clipboard, S: Store> Runtime<E, L, C, S> {
                 }
                 Effect::OpenUrl(url) => open_url(&self.launcher, &self.base_url, &url),
                 Effect::CopyToClipboard(text) => copy_text(&self.clipboard, &text),
+                Effect::CopyLink(url) => copy_link(&self.clipboard, &self.base_url, &url),
                 other => {
                     self.exec.spawn(self.client, other);
                     continue;

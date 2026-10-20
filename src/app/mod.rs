@@ -15,6 +15,7 @@ mod signin;
 mod status;
 mod thread;
 mod toast;
+mod writes;
 
 pub use key_status::KeyStatus;
 pub use signin::{SignInState, SignInStep};
@@ -244,6 +245,8 @@ pub struct App {
     drafts_dirty_at: Option<OffsetDateTime>,
     /// A write failed, so the drafts are not on disk; they are written when the user leaves the composer or quits, not on a timer.
     drafts_unsaved: bool,
+    /// The star, save and pastel requests that are out, by commit.
+    writes: HashMap<(writes::WriteKind, String), ReqId>,
 }
 
 impl App {
@@ -317,6 +320,7 @@ impl App {
             in_flight: None,
             drafts_dirty_at: None,
             drafts_unsaved: false,
+            writes: HashMap::new(),
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
             let text = toast::key_error_text(error, path);
@@ -585,6 +589,31 @@ impl App {
             Action::CommitFailed { req, failure } => self.commit_failed(req, &failure),
             Action::DraftsLoaded { account, drafts } => self.drafts_loaded(&account, drafts),
             Action::DraftsSaveFailed => self.drafts_unsaved = true,
+            Action::ToggleStar => effects.extend(self.toggle_star()),
+            Action::ToggleSave => effects.extend(self.toggle_save()),
+            Action::GivePastel => effects.extend(self.give_pastel()),
+            Action::CopyLink => effects.extend(self.copy_link()),
+            Action::OpenInBrowser => effects.extend(self.open_in_browser()),
+            Action::StarDone { id, req, commit } => {
+                self.flag_done(writes::WriteKind::Star, &id, req, &commit)
+            }
+            Action::StarFailed {
+                id,
+                on,
+                req,
+                failure,
+            } => self.flag_failed(writes::WriteKind::Star, &id, on, req, &failure),
+            Action::BookmarkDone { id, req, commit } => {
+                self.flag_done(writes::WriteKind::Bookmark, &id, req, &commit)
+            }
+            Action::BookmarkFailed {
+                id,
+                on,
+                req,
+                failure,
+            } => self.flag_failed(writes::WriteKind::Bookmark, &id, on, req, &failure),
+            Action::PastelDone { id, req, response } => self.pastel_done(&id, req, &response),
+            Action::PastelFailed { id, req, failure } => self.pastel_failed(&id, req, &failure),
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
                 if let Some(state) = self.threads.get_mut(&id)

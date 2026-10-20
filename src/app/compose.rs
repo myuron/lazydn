@@ -122,7 +122,7 @@ impl App {
     }
 
     /// `Some` when the session decides alone: a guest is asked to sign in, a restoring session waits.
-    fn session_gate(&mut self) -> Option<Vec<Effect>> {
+    pub(super) fn session_gate(&mut self) -> Option<Vec<Effect>> {
         match self.session {
             Session::Guest => Some(self.open_sign_in()),
             Session::Restoring => Some(Vec::new()),
@@ -177,7 +177,7 @@ impl App {
         Vec::new()
     }
 
-    fn selected_commit(&self) -> Option<Commit> {
+    pub(super) fn selected_commit(&self) -> Option<Commit> {
         match self.kind() {
             ScreenKind::Feed(key) => {
                 let feed = self.feeds.get(&key)?;

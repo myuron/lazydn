@@ -606,3 +606,98 @@ fn when_both_writes_fail_each_error_is_named() {
         }
     );
 }
+
+// --- links from the server, stars, saves and pastéis -----------------------------------------
+
+#[test]
+fn a_link_to_copy_reaches_the_clipboard_and_the_toast_says_copied_link() {
+    let mut rig = rig();
+
+    rig.runtime.apply(vec![Effect::CopyLink(
+        "https://dev-null.sh/@alice/commits/c1".into(),
+    )]);
+
+    assert_eq!(
+        *rig.copied.borrow(),
+        vec!["https://dev-null.sh/@alice/commits/c1".to_string()]
+    );
+    assert!(rig.spawned.borrow().is_empty());
+    let toast = rig.runtime.app.toast().expect("a toast");
+    assert_eq!(
+        (toast.kind, toast.text.as_str()),
+        (ToastKind::Success, "Copied link")
+    );
+}
+
+#[test]
+fn a_link_from_another_origin_is_not_copied_and_an_error_toast_says_so() {
+    let mut rig = rig();
+
+    rig.runtime
+        .apply(vec![Effect::CopyLink("https://evil.example/x".into())]);
+
+    assert!(rig.copied.borrow().is_empty());
+    assert!(rig.spawned.borrow().is_empty());
+    let toast = rig.runtime.app.toast().expect("a toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+}
+
+#[test]
+fn a_link_copy_that_fails_shows_the_error_and_not_copied_link() {
+    let mut rig = rig_with(ClientKind::Guest, Err("no tty".into()), Ok(()));
+
+    rig.runtime.apply(vec![Effect::CopyLink(
+        "https://dev-null.sh/@alice/commits/c1".into(),
+    )]);
+
+    let toast = rig.runtime.app.toast().expect("a toast");
+    assert_eq!(toast.kind, ToastKind::Error);
+    assert!(toast.text.contains("could not copy"), "{}", toast.text);
+}
+
+#[test]
+fn a_refused_open_and_a_refused_copy_say_the_same_thing() {
+    let mut open = rig();
+    let mut copy = rig();
+
+    open.runtime
+        .apply(vec![Effect::OpenUrl("https://evil.example/x".into())]);
+    copy.runtime
+        .apply(vec![Effect::CopyLink("https://evil.example/x".into())]);
+
+    let text_of = |rig: &Rig| rig.runtime.app.toast().map(|t| t.text.clone());
+    assert_eq!(
+        text_of(&open),
+        Some("refusing a link outside https://dev-null.sh".to_string())
+    );
+    assert_eq!(text_of(&open), text_of(&copy));
+}
+
+#[test]
+fn star_save_and_pastel_go_to_the_executor_with_the_client_in_force() {
+    let mut rig = rig_with(ClientKind::Signed, Ok(()), Ok(()));
+    let effects = vec![
+        Effect::StarCommit {
+            id: "c1".into(),
+            on: true,
+            req: ReqId(4),
+        },
+        Effect::BookmarkCommit {
+            id: "c1".into(),
+            on: false,
+            req: ReqId(5),
+        },
+        Effect::GivePastel {
+            id: "c1".into(),
+            req: ReqId(6),
+        },
+    ];
+
+    rig.runtime.apply(effects.clone());
+
+    let expected: Vec<_> = effects
+        .into_iter()
+        .map(|e| (ClientKind::Signed, e))
+        .collect();
+    assert_eq!(*rig.spawned.borrow(), expected);
+}

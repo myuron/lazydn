@@ -711,13 +711,14 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║  1-3     switch tab       p   give a pastel              ║
 ║  g l     log              b   save                       ║
 ║  g e     trending         y   copy link                  ║
-║  g n     notifications    .   more menu                  ║
-║  g p     profile          d   revert (own)               ║
-║  g s     settings        Global                          ║
-║  g v     saved            c   write a commit             ║
-║  g g / G top / bottom     R   refresh                    ║
-║  @       author profile   ?   this help                  ║
-║  3 / 4   follow lists     Q   quit                       ║
+║  g n     notifications    O   open in browser            ║
+║  g p     profile          .   more menu                  ║
+║  g s     settings         d   revert (own)               ║
+║  g v     saved           Global                          ║
+║  g g / G top / bottom     c   write a commit             ║
+║  @       author profile   R   refresh                    ║
+║  3 / 4   follow lists     ?   this help                  ║
+║                           Q   quit                       ║
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -791,13 +792,13 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `3` / `4` | Followers / Following を開く | Profile | 追加 |
 | `@` | 選択中のカードの作者のプロフィールを開く | 一覧、Thread、Profile の一覧 | 追加 |
 | `1`〜`6`、`a` | フィルターの切り替え | Notifications | 追加 |
-| `s` | star | カード | 追加 |
-| `p` | pastel を贈る | カード | 追加 |
+| `s` | star（自分の commit には付けられません） | カード | 追加 |
+| `p` | pastel を贈る（pastéis モードがオンのときだけ。自分の commit には贈れません） | カード | 追加 |
 | `b` | 保存 | カード | 追加 |
 | `.` | その他のメニュー | カード | 追加 |
 | `!` | 通報 | カード | 追加 |
 | `d` | 削除（自分の commit のみ） | カード | 追加 |
-| `O` | ブラウザで開く | カード、Profile | 追加 |
+| `O` | ブラウザで開く。カードを選んでいればその commit、Profile でカードが 1 件もなければそのユーザーのページ | カード、Profile | 追加 |
 | `f` / `m` / `B` | フォロー / ミュート / ブロック | Profile、ユーザー一覧 | 追加 |
 | `S` / `D` | GitHub の再同期 / アカウントの削除 | Settings | 追加 |
 | `L` | サインイン | ゲスト | 追加 |

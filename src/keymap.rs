@@ -168,6 +168,11 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('R') => Some(Action::Refresh),
             KeyCode::Char('r') if commit_cards => Some(Action::Reply),
             KeyCode::Char('q') if commit_cards => Some(Action::Quote),
+            KeyCode::Char('s') if commit_cards => Some(Action::ToggleStar),
+            KeyCode::Char('b') if commit_cards => Some(Action::ToggleSave),
+            KeyCode::Char('p') if commit_cards => Some(Action::GivePastel),
+            KeyCode::Char('y') if commit_cards => Some(Action::CopyLink),
+            KeyCode::Char('O') if commit_cards => Some(Action::OpenInBrowser),
             KeyCode::Char('@') if !matches!(app.screen(), Screen::Connections(..)) => {
                 Some(Action::OpenAuthor)
             }

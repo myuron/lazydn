@@ -76,7 +76,46 @@ async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
         | Effect::CopyToClipboard(_)
         | Effect::RegisterDevice { .. }
         | Effect::SaveDrafts { .. }
-        | Effect::LoadDrafts { .. } => return None,
+        | Effect::LoadDrafts { .. }
+        | Effect::CopyLink(_) => return None,
+        Effect::StarCommit { id, on, req } => {
+            let answer = if *on {
+                client.star(id).await
+            } else {
+                client.unstar(id).await
+            };
+            answer.map(|r| {
+                let action = Action::StarDone {
+                    id: id.clone(),
+                    req: *req,
+                    commit: Box::new(r.data),
+                };
+                (action, r.rate)
+            })
+        }
+        Effect::BookmarkCommit { id, on, req } => {
+            let answer = if *on {
+                client.bookmark(id).await
+            } else {
+                client.unbookmark(id).await
+            };
+            answer.map(|r| {
+                let action = Action::BookmarkDone {
+                    id: id.clone(),
+                    req: *req,
+                    commit: Box::new(r.data),
+                };
+                (action, r.rate)
+            })
+        }
+        Effect::GivePastel { id, req } => client.give_pastel(id).await.map(|r| {
+            let action = Action::PastelDone {
+                id: id.clone(),
+                req: *req,
+                response: Box::new(r.data),
+            };
+            (action, r.rate)
+        }),
         Effect::CreateCommit {
             body,
             parent_id,
@@ -329,7 +368,25 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         | Effect::CopyToClipboard(_)
         | Effect::RegisterDevice { .. }
         | Effect::SaveDrafts { .. }
-        | Effect::LoadDrafts { .. } => return None,
+        | Effect::LoadDrafts { .. }
+        | Effect::CopyLink(_) => return None,
+        Effect::StarCommit { id, on, req } => Action::StarFailed {
+            id: id.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::BookmarkCommit { id, on, req } => Action::BookmarkFailed {
+            id: id.clone(),
+            on: *on,
+            req: *req,
+            failure,
+        },
+        Effect::GivePastel { id, req } => Action::PastelFailed {
+            id: id.clone(),
+            req: *req,
+            failure,
+        },
     })
 }
 

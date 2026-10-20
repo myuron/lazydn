@@ -7,8 +7,8 @@ use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
 use crate::drafts::Drafts;
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::model::{
-    Commit, GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User,
-    UserResponse,
+    Commit, GroupPage, MeResponse, NotificationsPage, Page, PastelResponse, ThreadItem,
+    ThreadResponse, User, UserResponse,
 };
 use crate::notifications::Filter;
 
@@ -295,6 +295,50 @@ pub enum Action {
         req: ReqId,
         failure: Failure,
     },
+    /// `s`: stars or unstars the selected card.
+    ToggleStar,
+    /// `b`: saves or unsaves the selected card.
+    ToggleSave,
+    /// `p`: gives a pastel to the selected card.
+    GivePastel,
+    /// `y`: copies the link of the selected card.
+    CopyLink,
+    /// `O`: opens the selected card, or the profile owner when a profile has no card, in the browser.
+    OpenInBrowser,
+    /// The server starred (`on`) or unstarred the commit; `commit` carries the counts it holds now.
+    StarDone {
+        id: String,
+        req: ReqId,
+        commit: Box<Commit>,
+    },
+    StarFailed {
+        id: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server saved (`on`) or unsaved the commit.
+    BookmarkDone {
+        id: String,
+        req: ReqId,
+        commit: Box<Commit>,
+    },
+    BookmarkFailed {
+        id: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    PastelDone {
+        id: String,
+        req: ReqId,
+        response: Box<PastelResponse>,
+    },
+    PastelFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
     /// The write of the drafts failed, so they are still unsaved.
     DraftsSaveFailed,
     /// The drafts of `account` read from disk; they fill only the slots that hold no text yet.
@@ -396,6 +440,25 @@ pub enum Effect {
         quoted_commit_id: Option<String>,
         req: ReqId,
     },
+    /// Stars (`on`) or unstars the commit.
+    StarCommit {
+        id: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Saves (`on`) or unsaves the commit.
+    BookmarkCommit {
+        id: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Spends one of the daily pastéis on the commit.
+    GivePastel {
+        id: String,
+        req: ReqId,
+    },
+    /// Copies a link from the server to the clipboard once the runtime has checked its origin.
+    CopyLink(String),
     /// Writes the drafts of `account` to disk. The runtime does it on the spot, not on a task.
     SaveDrafts {
         account: String,

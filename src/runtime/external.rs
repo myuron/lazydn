@@ -37,6 +37,14 @@ fn error_notice(text: String) -> Vec<Action> {
     }]
 }
 
+/// The same refusal for opening and copying, naming the origin the link had to be on.
+fn refused(base_url: &str) -> Vec<Action> {
+    let origin = Url::parse(base_url)
+        .map(|u| u.origin().ascii_serialization())
+        .unwrap_or_else(|_| clean(base_url));
+    error_notice(format!("refusing a link outside {origin}"))
+}
+
 pub fn is_loopback(url: &Url) -> bool {
     match url.host() {
         Some(Host::Domain(name)) => name == "localhost",
@@ -64,7 +72,7 @@ fn approval_url(raw: &str, base_url: &str) -> Option<Url> {
 /// `https`, or `http` to a loopback host. Returns a `Notice` when it refuses or the launch fails.
 pub fn open_url(launcher: &dyn Launcher, base_url: &str, raw: &str) -> Vec<Action> {
     let Some(url) = approval_url(raw, base_url) else {
-        return error_notice("refusing to open a URL that is not on the approval host".into());
+        return refused(base_url);
     };
     match launcher.open(&url) {
         Ok(()) => Vec::new(),
@@ -78,6 +86,22 @@ pub fn copy_text(clipboard: &dyn Clipboard, text: &str) -> Vec<Action> {
         Ok(()) => Vec::new(),
         Err(reason) => error_notice(format!("could not copy: {}", clean(&reason))),
     }
+}
+
+/// Copies `raw` through `clipboard` after the same origin check as `open_url`; the text copied is the parsed URL.
+/// Answers with a success `Notice` when it copied, and an error `Notice` when it refuses or the copy fails.
+pub fn copy_link(clipboard: &dyn Clipboard, base_url: &str, raw: &str) -> Vec<Action> {
+    let Some(url) = approval_url(raw, base_url) else {
+        return refused(base_url);
+    };
+    let mut actions = copy_text(clipboard, url.as_str());
+    if actions.is_empty() {
+        actions.push(Action::Notice {
+            kind: ToastKind::Success,
+            text: "Copied link".into(),
+        });
+    }
+    actions
 }
 
 /// The escape sequence that asks a terminal to set its clipboard to `text`.

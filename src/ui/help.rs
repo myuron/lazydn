@@ -4,7 +4,7 @@ use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
 
 use crate::ui::centered;
 
-const LINES: [&str; 15] = [
+const LINES: [&str; 16] = [
     " Navigation               Commit                          ",
     "  j / k   next / prev      r   reply                      ",
     "  Enter   open             q   quote                      ",
@@ -13,17 +13,18 @@ const LINES: [&str; 15] = [
     "  1-3     switch tab       p   give a pastel              ",
     "  g l     log              b   save                       ",
     "  g e     trending         y   copy link                  ",
-    "  g n     notifications    .   more menu                  ",
-    "  g p     profile          d   revert (own)               ",
-    "  g s     settings        Global                          ",
-    "  g v     saved            c   write a commit             ",
-    "  g g / G top / bottom     R   refresh                    ",
-    "  @       author profile   ?   this help                  ",
-    "  3 / 4   follow lists     Q   quit                       ",
+    "  g n     notifications    O   open in browser            ",
+    "  g p     profile          .   more menu                  ",
+    "  g s     settings         d   revert (own)               ",
+    "  g v     saved           Global                          ",
+    "  g g / G top / bottom     c   write a commit             ",
+    "  @       author profile   R   refresh                    ",
+    "  3 / 4   follow lists     ?   this help                  ",
+    "                           Q   quit                       ",
 ];
 
 pub fn render(frame: &mut Frame, area: Rect) {
-    let rect = centered(area, 60, 17);
+    let rect = centered(area, 60, 18);
     frame.render_widget(Clear, rect);
     let block = Block::bordered()
         .border_type(BorderType::Double)

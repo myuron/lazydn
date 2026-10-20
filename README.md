@@ -66,6 +66,11 @@ Drafts are saved about two seconds after you stop typing, and at once when you c
 | `c` | Write a commit |
 | `r` | Reply to the selected commit, in a box under its card |
 | `q` | Quote the selected commit, in a dialog |
+| `s` | Star or unstar the selected commit (not your own) |
+| `b` | Save or unsave the selected commit |
+| `p` | Give a pastel to the selected commit (only with the pastéis mode on, not to your own) |
+| `y` | Copy the link of the selected commit |
+| `O` | Open the selected commit in the browser; on a profile with no commit, open the user's page |
 | `?` | Help |
 | `Q` | Quit |
 

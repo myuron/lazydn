@@ -80,3 +80,5 @@ mod status_tests;
 mod tests;
 #[cfg(test)]
 mod thread_tests;
+#[cfg(test)]
+mod write_tests;

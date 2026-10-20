@@ -62,6 +62,7 @@ impl App {
         self.history.clear();
         self.g_pending = false;
         self.focus = Pane::Main;
+        self.writes.clear();
         self.forget_composer_state();
     }
 
