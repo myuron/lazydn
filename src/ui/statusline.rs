@@ -9,7 +9,7 @@ use crate::ui::screens::{screen_name, tab_label};
 pub fn breadcrumb(app: &App) -> String {
     match app.screen() {
         Screen::Log(tab) => format!("Log > {}", tab_label(tab)),
-        other => screen_name(other).to_string(),
+        other => screen_name(&other).to_string(),
     }
 }
 

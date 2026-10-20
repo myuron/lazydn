@@ -1,4 +1,10 @@
+use std::collections::HashMap;
+
+use ratatui::layout::Rect;
+use time::{OffsetDateTime, UtcOffset};
+
 use crate::action::{Action, Effect};
+use crate::feed::{Feed, FeedKey, ReqId, ensure_visible};
 use crate::layout::LayoutMode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +18,7 @@ pub struct Me {
     pub pasteis_max: u32,
     pub bio: String,
     pub unread: u32,
+    pub pasteis_mode: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,21 +27,23 @@ pub enum Session {
     SignedIn(Me),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LogTab {
     Following,
     Latest,
     Trending,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Screen {
     Log(LogTab),
     Notifications,
-    Profile,
+    /// Username of the profile owner.
+    Profile(String),
     Saved,
     Settings,
-    Thread,
+    /// Commit id.
+    Thread(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,14 +68,14 @@ pub enum NavItem {
 }
 
 impl NavItem {
-    pub fn of_screen(screen: Screen) -> Option<NavItem> {
+    pub fn of_screen(screen: &Screen) -> Option<NavItem> {
         match screen {
             Screen::Log(_) => Some(NavItem::Log),
             Screen::Notifications => Some(NavItem::Notifications),
-            Screen::Profile => Some(NavItem::Profile),
+            Screen::Profile(_) => Some(NavItem::Profile),
             Screen::Saved => Some(NavItem::Saved),
             Screen::Settings => Some(NavItem::Settings),
-            Screen::Thread => None,
+            Screen::Thread(_) => None,
         }
     }
 
@@ -83,6 +92,23 @@ impl NavItem {
     ];
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Prefs {
+    pub ascii: bool,
+    pub truecolor: bool,
+    pub reply_preview_limit: usize,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Self {
+            ascii: false,
+            truecolor: true,
+            reply_preview_limit: 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct App {
     session: Session,
@@ -93,10 +119,16 @@ pub struct App {
     nav_cursor: NavItem,
     g_pending: bool,
     size: (u16, u16),
+    feeds: HashMap<FeedKey, Feed>,
+    now: OffsetDateTime,
+    local_offset: UtcOffset,
+    prefs: Prefs,
+    last_visit: Option<String>,
+    next_req: u64,
 }
 
 impl App {
-    pub fn new(session: Session) -> Self {
+    pub fn new(session: Session, now: OffsetDateTime, local_offset: UtcOffset) -> Self {
         let guest = matches!(session, Session::Guest);
         Self {
             screen: Screen::Log(if guest {
@@ -111,26 +143,34 @@ impl App {
             nav_cursor: NavItem::Log,
             g_pending: false,
             size: (0, 0),
+            feeds: FeedKey::ALL
+                .into_iter()
+                .map(|k| (k, Feed::default()))
+                .collect(),
+            now,
+            local_offset,
+            prefs: Prefs::default(),
+            last_visit: None,
+            next_req: 0,
         }
     }
 
     pub fn update(&mut self, action: Action) -> Vec<Effect> {
+        let mut effects = Vec::new();
         match action {
             Action::Quit => return vec![Effect::Quit],
             Action::Resize(w, h) => self.size = (w, h),
-            Action::Open(screen) => {
-                if self.guard_sign_in(screen) {
-                    self.history.push(self.screen);
-                    self.show(screen);
-                }
-            }
+            Action::Init => effects.extend(self.entry_fetch()),
+            Action::Open(screen) => effects.extend(self.open(screen)),
             Action::Goto(screen) => {
                 self.g_pending = false;
                 self.goto(screen);
+                effects.extend(self.entry_fetch());
             }
             Action::Back => {
                 if let Some(previous) = self.history.pop() {
                     self.show(previous);
+                    effects.extend(self.entry_fetch());
                 }
             }
             Action::StartGPrefix => self.g_pending = true,
@@ -156,21 +196,23 @@ impl App {
             Action::NavEnter => {
                 let target = match self.nav_cursor {
                     NavItem::Log => match self.screen {
-                        Screen::Log(_) => self.screen,
+                        Screen::Log(_) => self.screen.clone(),
                         _ => Screen::Log(self.home_tab()),
                     },
                     NavItem::Notifications => Screen::Notifications,
-                    NavItem::Profile => Screen::Profile,
+                    NavItem::Profile => Screen::Profile(self.own_handle()),
                     NavItem::Saved => Screen::Saved,
                     NavItem::Settings => Screen::Settings,
                 };
                 if self.goto(target) {
                     self.focus = Pane::Main;
                 }
+                effects.extend(self.entry_fetch());
             }
             Action::SwitchTab(tab) => {
                 if matches!(self.screen, Screen::Log(_)) {
                     self.goto_tab(tab);
+                    effects.extend(self.entry_fetch());
                 }
             }
             Action::OpenHelp => self.modal = Some(Modal::Help),
@@ -181,8 +223,50 @@ impl App {
                     self.modal = Some(Modal::SignIn);
                 }
             }
+            Action::Tick(now) => {
+                self.now = now;
+                effects.extend(self.poll());
+            }
+            Action::FeedLoaded { key, req, page } => {
+                let now = self.now;
+                self.feeds
+                    .entry(key)
+                    .or_default()
+                    .apply_loaded(req, page, now);
+            }
+            Action::FeedFailed { key, req, code } => {
+                self.feeds.entry(key).or_default().apply_failed(req, &code);
+            }
+            Action::NewCommits { key, since, count } => {
+                self.feeds
+                    .entry(key)
+                    .or_default()
+                    .accept_new_commits(&since, count);
+            }
+            Action::MoveSelection(step) => effects.extend(self.move_selection(step)),
+            Action::SelectFirst => {
+                self.g_pending = false;
+                effects.extend(self.select(0));
+            }
+            Action::SelectLast => effects.extend(self.select(usize::MAX)),
+            Action::OpenSelected => {
+                let id = self
+                    .current_feed()
+                    .and_then(|f| f.items.get(f.selected))
+                    .map(|c| c.id.clone());
+                if let Some(id) = id {
+                    effects.extend(self.open(Screen::Thread(id)));
+                }
+            }
+            Action::ToggleReplies => {
+                if let Some(key) = self.current_key() {
+                    self.feeds.entry(key).or_default().toggle_replies();
+                }
+            }
+            Action::Refresh => effects.extend(self.refresh()),
         }
-        Vec::new()
+        self.reconcile_scroll();
+        effects
     }
 
     pub fn home_tab(&self) -> LogTab {
@@ -192,20 +276,20 @@ impl App {
         }
     }
 
-    fn needs_sign_in(&self, screen: Screen) -> bool {
+    fn needs_sign_in(&self, screen: &Screen) -> bool {
         matches!(self.session, Session::Guest)
             && matches!(
                 screen,
                 Screen::Log(LogTab::Following)
                     | Screen::Notifications
-                    | Screen::Profile
+                    | Screen::Profile(_)
                     | Screen::Saved
                     | Screen::Settings
             )
     }
 
     /// Returns false after opening the sign-in dialog when a guest targets a protected screen.
-    fn guard_sign_in(&mut self, screen: Screen) -> bool {
+    fn guard_sign_in(&mut self, screen: &Screen) -> bool {
         if self.needs_sign_in(screen) {
             self.modal = Some(Modal::SignIn);
             return false;
@@ -215,17 +299,21 @@ impl App {
 
     /// Replaces the screen and clears the history; returns false when the sign-in dialog opened instead.
     fn goto(&mut self, screen: Screen) -> bool {
-        if !self.guard_sign_in(screen) {
+        if !self.guard_sign_in(&screen) {
             return false;
         }
         self.history.clear();
         self.show(screen);
+        if let Some(feed) = self.current_key().map(|k| self.feeds.entry(k).or_default()) {
+            feed.selected = 0;
+            feed.scroll = 0;
+        }
         true
     }
 
     fn goto_tab(&mut self, tab: LogTab) {
         let screen = Screen::Log(tab);
-        if self.guard_sign_in(screen) {
+        if self.guard_sign_in(&screen) {
             self.screen = screen;
         }
     }
@@ -236,7 +324,7 @@ impl App {
     }
 
     fn sync_cursor(&mut self) {
-        if let Some(item) = NavItem::of_screen(self.screen) {
+        if let Some(item) = NavItem::of_screen(&self.screen) {
             self.nav_cursor = item;
         }
     }
@@ -246,7 +334,34 @@ impl App {
     }
 
     pub fn screen(&self) -> Screen {
-        self.screen
+        self.screen.clone()
+    }
+
+    pub fn feed(&self, key: FeedKey) -> &Feed {
+        &self.feeds[&key]
+    }
+
+    pub fn now(&self) -> OffsetDateTime {
+        self.now
+    }
+
+    pub fn local_offset(&self) -> UtcOffset {
+        self.local_offset
+    }
+
+    pub fn prefs(&self) -> &Prefs {
+        &self.prefs
+    }
+
+    pub fn last_visit(&self) -> Option<&str> {
+        self.last_visit.as_deref()
+    }
+
+    pub fn own_handle(&self) -> String {
+        match &self.session {
+            Session::SignedIn(me) => me.handle.clone(),
+            Session::Guest => String::new(),
+        }
     }
 
     pub fn focus(&self) -> Pane {
@@ -271,5 +386,134 @@ impl App {
 
     pub fn layout_mode(&self) -> LayoutMode {
         LayoutMode::from_size(self.size.0, self.size.1)
+    }
+}
+
+impl App {
+    fn open(&mut self, screen: Screen) -> Vec<Effect> {
+        if !self.guard_sign_in(&screen) {
+            return Vec::new();
+        }
+        self.history.push(self.screen.clone());
+        self.show(screen);
+        self.entry_fetch()
+    }
+
+    fn current_key(&self) -> Option<FeedKey> {
+        match self.screen {
+            Screen::Log(tab) => Some(FeedKey::Log(tab)),
+            Screen::Saved => Some(FeedKey::Saved),
+            _ => None,
+        }
+    }
+
+    fn current_feed(&self) -> Option<&Feed> {
+        self.current_key().map(|k| &self.feeds[&k])
+    }
+
+    /// Guests never fetch: the log API needs a sign-in.
+    fn fetchable_key(&self) -> Option<FeedKey> {
+        self.current_key()
+            .filter(|_| matches!(self.session, Session::SignedIn(_)))
+    }
+
+    fn request(&mut self, key: FeedKey, cursor: Option<String>, append: bool) -> Effect {
+        self.next_req += 1;
+        let req = ReqId(self.next_req);
+        self.feeds.entry(key).or_default().begin(req, append);
+        match key {
+            FeedKey::Log(tab) => Effect::FetchLog { tab, cursor, req },
+            FeedKey::Saved => Effect::FetchSaved { cursor, req },
+        }
+    }
+
+    fn entry_fetch(&mut self) -> Vec<Effect> {
+        match self.fetchable_key() {
+            Some(key) if self.feeds[&key].needs_entry_fetch() => {
+                vec![self.request(key, None, false)]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn refresh(&mut self) -> Vec<Effect> {
+        let Some(key) = self.fetchable_key() else {
+            return Vec::new();
+        };
+        let (cursor, append) = self.feeds[&key].refresh_target();
+        vec![self.request(key, cursor, append)]
+    }
+
+    fn prefetch(&mut self) -> Vec<Effect> {
+        let Some(key) = self.fetchable_key() else {
+            return Vec::new();
+        };
+        match self.feeds[&key].prefetch_cursor() {
+            Some(cursor) => vec![self.request(key, Some(cursor), true)],
+            None => Vec::new(),
+        }
+    }
+
+    fn select(&mut self, index: usize) -> Vec<Effect> {
+        let Some(key) = self.current_key() else {
+            return Vec::new();
+        };
+        self.feeds.entry(key).or_default().select(index);
+        self.prefetch()
+    }
+
+    fn move_selection(&mut self, step: i32) -> Vec<Effect> {
+        let Some(key) = self.current_key() else {
+            return Vec::new();
+        };
+        let feed = &self.feeds[&key];
+        // A failed append must not block this: the user asked for the newest items.
+        if step < 0 && feed.selected == 0 && feed.new_commits > 0 && self.fetchable_key().is_some()
+        {
+            return vec![self.request(key, None, false)];
+        }
+        let target = feed.selected.saturating_add_signed(step as isize);
+        self.select(target)
+    }
+
+    fn poll(&mut self) -> Vec<Effect> {
+        let Some(key @ FeedKey::Log(tab)) = self.fetchable_key() else {
+            return Vec::new();
+        };
+        if tab == LogTab::Trending {
+            return Vec::new();
+        }
+        let Some(since) = self.feeds[&key].poll_since(self.now) else {
+            return Vec::new();
+        };
+        self.feeds.entry(key).or_default().last_poll = Some(self.now);
+        vec![Effect::PollLog { tab, since }]
+    }
+
+    /// Leaves the scroll alone when the size is unknown, since no row can be placed then.
+    fn reconcile_scroll(&mut self) {
+        let Some(key) = self.current_key() else {
+            return;
+        };
+        if self.layout_mode() == LayoutMode::TooSmall {
+            return;
+        }
+        let (w, h) = self.size;
+        let main = crate::ui::layout::split(Rect::new(0, 0, w, h), self.layout_mode()).main;
+        let tabs = if matches!(key, FeedKey::Log(_)) { 2 } else { 0 };
+        let view = main.height.saturating_sub(2 + tabs) as usize;
+        let feed = &self.feeds[&key];
+        let scroll = if feed.selected == 0 {
+            0
+        } else {
+            let rows = crate::ui::feed::rows(feed, key, self, main.width.saturating_sub(2));
+            let wanted = match rows.cards.get(feed.selected) {
+                Some(card) => ensure_visible(card.start, card.height, feed.scroll as usize, view),
+                None => feed.scroll as usize,
+            };
+            // Shrinking content or a taller view must not leave blank rows below the list.
+            wanted.min(rows.lines.len().saturating_sub(view))
+        };
+        self.feeds.entry(key).or_default().scroll = scroll.min(u16::MAX as usize) as u16;
     }
 }

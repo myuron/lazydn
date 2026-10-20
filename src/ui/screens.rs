@@ -15,14 +15,14 @@ pub fn tab_label(tab: LogTab) -> &'static str {
     }
 }
 
-pub fn screen_name(screen: Screen) -> &'static str {
+pub fn screen_name(screen: &Screen) -> &'static str {
     match screen {
         Screen::Log(_) => "Log",
         Screen::Notifications => "Notifications",
-        Screen::Profile => "Profile",
+        Screen::Profile(_) => "Profile",
         Screen::Saved => "Saved",
         Screen::Settings => "Settings",
-        Screen::Thread => "Thread",
+        Screen::Thread(_) => "Thread",
     }
 }
 
@@ -49,14 +49,14 @@ fn thirds(row: Rect) -> [Rect; 3] {
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let block = Block::bordered()
         .border_type(theme::border_type(app.focus() == Pane::Main))
-        .title(format!(" {} ", screen_name(app.screen())));
+        .title(format!(" {} ", screen_name(&app.screen())));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     match app.screen() {
         Screen::Log(tab) => render_log(app, frame, inner, tab),
         other => frame.render_widget(
-            Paragraph::new(format!(" {} (not implemented yet)", screen_name(other))),
+            Paragraph::new(format!(" {} (not implemented yet)", screen_name(&other))),
             inner,
         ),
     }

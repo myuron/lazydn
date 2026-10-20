@@ -26,7 +26,11 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if key.code == KeyCode::Char('Q') {
         return Some(Action::Quit);
     }
+    let list = app.focus() == Pane::Main && matches!(app.screen(), Screen::Log(_) | Screen::Saved);
     if app.g_pending() {
+        if list && key.code == KeyCode::Char('g') {
+            return Some(Action::SelectFirst);
+        }
         return Some(match key.code {
             KeyCode::Char(c) => g_target(app, c).map_or(Action::CancelGPrefix, Action::Goto),
             _ => Action::CancelGPrefix,
@@ -56,6 +60,20 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             _ => {}
         }
     }
+    if list {
+        let action = match key.code {
+            KeyCode::Char('j') | KeyCode::Down => Some(Action::MoveSelection(1)),
+            KeyCode::Char('k') | KeyCode::Up => Some(Action::MoveSelection(-1)),
+            KeyCode::Char('G') => Some(Action::SelectLast),
+            KeyCode::Enter => Some(Action::OpenSelected),
+            KeyCode::Char('o') => Some(Action::ToggleReplies),
+            KeyCode::Char('R') => Some(Action::Refresh),
+            _ => None,
+        };
+        if action.is_some() {
+            return action;
+        }
+    }
     match key.code {
         KeyCode::Char('g') => Some(Action::StartGPrefix),
         KeyCode::Char('?') => Some(Action::OpenHelp),
@@ -70,7 +88,7 @@ fn g_target(app: &App, c: char) -> Option<Screen> {
         'l' => Some(Screen::Log(app.home_tab())),
         'e' => Some(Screen::Log(LogTab::Trending)),
         'n' => Some(Screen::Notifications),
-        'p' => Some(Screen::Profile),
+        'p' => Some(Screen::Profile(app.own_handle())),
         's' => Some(Screen::Settings),
         'v' => Some(Screen::Saved),
         _ => None,

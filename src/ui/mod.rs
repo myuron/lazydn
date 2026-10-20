@@ -1,5 +1,6 @@
 pub mod aside;
 pub mod card;
+pub mod feed;
 pub mod help;
 pub mod layout;
 pub mod nav;

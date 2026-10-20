@@ -60,7 +60,7 @@ fn t02_g_prefix_opens_each_screen_when_signed_in() {
         ('n', Screen::Notifications),
         ('v', Screen::Saved),
         ('s', Screen::Settings),
-        ('p', Screen::Profile),
+        ('p', Screen::Profile("myuron".into())),
         ('l', FOLLOWING),
         ('e', TRENDING),
     ];

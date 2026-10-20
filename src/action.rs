@@ -1,8 +1,14 @@
-use crate::app::{LogTab, Screen};
+use time::OffsetDateTime;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use crate::app::{LogTab, Screen};
+use crate::feed::{FeedKey, FeedPage, ReqId};
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Quit,
+    /// Sent once at startup so that the first screen requests its data.
+    Init,
+    Tick(OffsetDateTime),
     Resize(u16, u16),
     /// Pushes onto the history so that Esc can return.
     Open(Screen),
@@ -20,9 +26,44 @@ pub enum Action {
     OpenSignIn,
     CloseModal,
     Commit,
+    FeedLoaded {
+        key: FeedKey,
+        req: ReqId,
+        page: FeedPage,
+    },
+    /// `code` is an API error code or `http_<status>`.
+    FeedFailed {
+        key: FeedKey,
+        req: ReqId,
+        code: String,
+    },
+    NewCommits {
+        key: FeedKey,
+        since: String,
+        count: u32,
+    },
+    MoveSelection(i32),
+    SelectFirst,
+    SelectLast,
+    OpenSelected,
+    ToggleReplies,
+    Refresh,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     Quit,
+    FetchLog {
+        tab: LogTab,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchSaved {
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    PollLog {
+        tab: LogTab,
+        since: String,
+    },
 }

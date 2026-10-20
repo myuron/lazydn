@@ -3,10 +3,16 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 
+use time::macros::datetime;
+use time::{OffsetDateTime, UtcOffset};
+
 use crate::action::{Action, Effect};
 use crate::app::{App, Me, Session};
 use crate::keymap::map_key;
 use crate::ui;
+
+/// Fixed clock so that relative times in every test are reproducible.
+pub const NOW: OffsetDateTime = datetime!(2026-10-20 12:00 UTC);
 
 /// Fixed account shown in the Aside and the Nav badge of every signed-in test.
 pub fn fixture_me() -> Me {
@@ -20,17 +26,18 @@ pub fn fixture_me() -> Me {
         pasteis_max: 10,
         bio: "Rust / TUI enjoyer".into(),
         unread: 12,
+        pasteis_mode: true,
     }
 }
 
 pub fn signed_in(w: u16, h: u16) -> App {
-    let mut app = App::new(Session::SignedIn(fixture_me()));
+    let mut app = App::new(Session::SignedIn(fixture_me()), NOW, UtcOffset::UTC);
     app.update(Action::Resize(w, h));
     app
 }
 
 pub fn guest(w: u16, h: u16) -> App {
-    let mut app = App::new(Session::Guest);
+    let mut app = App::new(Session::Guest, NOW, UtcOffset::UTC);
     app.update(Action::Resize(w, h));
     app
 }
