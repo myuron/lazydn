@@ -20,6 +20,9 @@ Without a signed-in device, lazydn starts as a guest on the Latest log. Press `?
 2. Press `Ctrl+O` to open the approval page in your browser, or `Ctrl+Y` to copy its URL. The copy is sent to the terminal with OSC 52; inside tmux, `set -g set-clipboard on` is needed, and the outer terminal must support OSC 52 too; otherwise the copy is silently lost.
 3. Approve the device on the page. The browser then tries to open a `devnull://lazydn/callback?code=...` URL that no program handles.
 4. Copy that whole `devnull://...` URL (or only its `code`) and paste it into the Code field, then press `Enter`.
+   - Chromium-based browsers show "Open xdg-open?" and keep the URL out of the address bar. Open the developer tools before approving, enable **Network → Preserve log**, press Approve, select the `authorize` request (POST, status 303) and copy its `location` response header.
+   - Firefox usually leaves the `devnull://` URL in the address bar of its error page.
+   - The code expires after five minutes and works once. Keep the dialog's URL (do not press `Ctrl+R`) and approve again if it expires.
 
 The browser is opened only when you press `Ctrl+O`.
 
