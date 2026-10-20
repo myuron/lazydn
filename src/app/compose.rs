@@ -134,7 +134,7 @@ impl App {
         if let Some(early) = self.session_gate() {
             return early;
         }
-        let Some(commit) = self.selected_commit() else {
+        let Some(commit) = self.selected_commit().filter(|c| !self.is_deleting(&c.id)) else {
             return Vec::new();
         };
         let (key, surface) = if quote {
@@ -201,7 +201,7 @@ impl App {
                 .filter(|s| s.shows_list())
                 .is_some_and(|s| s.cards(self.signed_in()).iter().any(|c| c.id == id)),
             ScreenKind::Thread(thread) => self.threads.get(&thread).is_some_and(|s| {
-                s.main.as_ref().is_some_and(|m| m.id == id)
+                s.main.as_ref().is_some_and(|m| item_id(m) == id)
                     || s.ancestors.iter().any(|i| item_id(i) == id)
                     || s.children
                         .values()

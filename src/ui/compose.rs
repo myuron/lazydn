@@ -368,7 +368,7 @@ pub fn render_modal(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 /// Shortens `text` to `width` columns, ending in `…` when something was cut.
-fn cut_with_ellipsis(text: &str, width: usize) -> String {
+pub(crate) fn cut_with_ellipsis(text: &str, width: usize) -> String {
     if text.width() <= width {
         return text.to_string();
     }

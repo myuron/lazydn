@@ -118,6 +118,8 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::StarCommit { .. }
         | Effect::BookmarkCommit { .. }
         | Effect::GivePastel { .. }
+        | Effect::DeleteCommit { .. }
+        | Effect::ReportCommit { .. }
         | Effect::CopyLink(_)
         | Effect::Quit => None,
     }

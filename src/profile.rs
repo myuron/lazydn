@@ -33,7 +33,12 @@ impl ProfileState {
 
     /// Only the signed Commits list leaves the pinned commit out, so only there does it come separately.
     pub fn pinned(&self, signed_in: bool) -> Option<&Commit> {
-        if signed_in && self.tab == ProfileTab::Commits {
+        self.pinned_of(self.tab, signed_in)
+    }
+
+    /// What `pinned` is while `tab` is shown.
+    pub fn pinned_of(&self, tab: ProfileTab, signed_in: bool) -> Option<&Commit> {
+        if signed_in && tab == ProfileTab::Commits {
             self.user.as_ref().and_then(|u| u.pinned_commit.as_ref())
         } else {
             None
@@ -42,11 +47,16 @@ impl ProfileState {
 
     /// The selectable cards: the pinned commit first, then the list without a copy of it.
     pub fn cards(&self, signed_in: bool) -> Vec<&Commit> {
-        let pinned = self.pinned(signed_in);
+        self.cards_of(self.tab, signed_in)
+    }
+
+    /// What `cards` is while `tab` is shown.
+    pub fn cards_of(&self, tab: ProfileTab, signed_in: bool) -> Vec<&Commit> {
+        let pinned = self.pinned_of(tab, signed_in);
         pinned
             .into_iter()
             .chain(
-                self.feed(self.tab)
+                self.feed(tab)
                     .items
                     .iter()
                     .filter(|c| pinned.is_none_or(|p| p.id != c.id)),

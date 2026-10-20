@@ -4,6 +4,7 @@ pub mod app;
 pub mod body;
 pub mod compose;
 pub mod config;
+pub mod dialogs;
 pub mod drafts;
 pub mod editor;
 pub mod feed;
@@ -30,6 +31,8 @@ mod compose_tests;
 #[cfg(test)]
 mod config_tests;
 #[cfg(test)]
+mod delete_tests;
+#[cfg(test)]
 mod drafts_tests;
 #[cfg(test)]
 mod editor_tests;
@@ -49,6 +52,8 @@ mod notifications_tests;
 mod profile_tests;
 #[cfg(test)]
 mod reply_tests;
+#[cfg(test)]
+mod report_tests;
 #[cfg(test)]
 mod session_tests;
 #[cfg(test)]

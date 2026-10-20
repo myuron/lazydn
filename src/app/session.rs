@@ -63,6 +63,7 @@ impl App {
         self.g_pending = false;
         self.focus = Pane::Main;
         self.writes.clear();
+        self.forget_removals();
         self.forget_composer_state();
     }
 

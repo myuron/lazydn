@@ -80,6 +80,7 @@ enum Drawn<'a> {
 }
 
 struct Painter<'a> {
+    app: &'a App,
     ctx: RenderCtx,
     own: Option<&'a str>,
     width: usize,
@@ -90,12 +91,15 @@ impl Painter<'_> {
         u16::try_from(self.width.saturating_sub(1)).unwrap_or(u16::MAX)
     }
 
-    fn rail(&self, lane_of: &Commit) -> Line<'static> {
-        let color = theme::lane_color(lane_of.author.effective_lane(), self.ctx.truecolor);
-        Line::from(vec![
-            Span::raw(" "),
-            Span::styled("│", Style::new().fg(color)),
-        ])
+    /// A deleted main commit has no author, so the rail takes no lane color.
+    fn rail(&self, lane_of: Option<&Commit>) -> Line<'static> {
+        let style = lane_of.map_or_else(Style::new, |c| {
+            Style::new().fg(theme::lane_color(
+                c.author.effective_lane(),
+                self.ctx.truecolor,
+            ))
+        });
+        Line::from(vec![Span::raw(" "), Span::styled("│", style)])
     }
 
     fn commit_card(&self, c: &Commit, opts: CardOptions, prefix: &Prefix) -> Vec<Line<'static>> {
@@ -103,13 +107,15 @@ impl Painter<'_> {
             is_own: self.own == Some(c.author.username.as_str()),
             ..opts
         };
-        card_lines(
-            CardInput::Commit(&without_count(c)),
-            &opts,
-            &self.ctx,
-            self.card_w(),
-            prefix,
-        )
+        let shown = without_count(c);
+        let input = if self.app.is_deleting(&c.id) {
+            CardInput::Deleting {
+                short_hash: &c.short_hash,
+            }
+        } else {
+            CardInput::Commit(&shown)
+        };
+        card_lines(input, &opts, &self.ctx, self.card_w(), prefix)
     }
 
     fn item_card(
@@ -140,7 +146,7 @@ impl Painter<'_> {
     }
 
     /// What a slot draws: a card with its options and prefix, or ready rows.
-    fn draw_slot<'a>(&self, slot: &'a Slot, main: &'a Commit, drafts: &Drafts) -> Drawn<'a> {
+    fn draw_slot<'a>(&self, slot: &'a Slot, main: &'a ThreadItem, drafts: &Drafts) -> Drawn<'a> {
         let card = |card, opts: CardOptions, id: &str, prefix| Drawn::Card {
             card,
             opts: CardOptions {
@@ -157,13 +163,13 @@ impl Painter<'_> {
                 Prefix::default(),
             ),
             SlotKind::Main { pos } => card(
-                CardRef::Commit(main),
+                CardRef::Item(main),
                 CardOptions {
                     variant: Variant::ThreadMain,
                     thread_pos: *pos,
                     ..CardOptions::default()
                 },
-                &main.id,
+                item_id(main),
                 Prefix::default(),
             ),
             SlotKind::Continuation(c) => card(
@@ -195,7 +201,10 @@ impl Painter<'_> {
                 item_id(item),
                 prefix_of(lasts, &self.ctx),
             ),
-            SlotKind::Rail => Drawn::Plain(vec![self.rail(main)]),
+            SlotKind::Rail => Drawn::Plain(vec![self.rail(match main {
+                ThreadItem::Commit(c) => Some(c),
+                ThreadItem::Tombstone(_) => None,
+            })]),
             SlotKind::Hint { lasts, count } => {
                 let text = if *count == 1 {
                     "1 reply (o)".to_string()
@@ -226,7 +235,7 @@ impl Painter<'_> {
         }
     }
 
-    fn slot_lines(&self, slot: &Slot, main: &Commit, drafts: &Drafts) -> Vec<Line<'static>> {
+    fn slot_lines(&self, slot: &Slot, main: &ThreadItem, drafts: &Drafts) -> Vec<Line<'static>> {
         match self.draw_slot(slot, main, drafts) {
             Drawn::Card {
                 card: CardRef::Item(item),
@@ -243,7 +252,12 @@ impl Painter<'_> {
     }
 
     /// The columns left of the body text of the card in `slot`, when it is the card of a commit.
-    fn lead_of(&self, slot: &Slot, main: &Commit, drafts: &Drafts) -> Option<Vec<Span<'static>>> {
+    fn lead_of(
+        &self,
+        slot: &Slot,
+        main: &ThreadItem,
+        drafts: &Drafts,
+    ) -> Option<Vec<Span<'static>>> {
         let Drawn::Card { card, opts, prefix } = self.draw_slot(slot, main, drafts) else {
             return None;
         };
@@ -252,15 +266,18 @@ impl Painter<'_> {
             CardRef::Item(ThreadItem::Commit(c)) => c,
             CardRef::Item(ThreadItem::Tombstone(_)) => return None,
         };
+        if self.app.is_deleting(&commit.id) {
+            return None;
+        }
         Some(body_lead(commit, &opts, &self.ctx, &prefix))
     }
 }
 
 /// The id of the commit that a selectable slot stands for.
-fn slot_item_id<'a>(slot: &'a Slot, main: &'a Commit) -> Option<&'a str> {
+fn slot_item_id<'a>(slot: &'a Slot, main: &'a ThreadItem) -> Option<&'a str> {
     match &slot.kind {
         SlotKind::Ancestor(item) | SlotKind::Reply { item, .. } => Some(item_id(item)),
-        SlotKind::Main { .. } => Some(&main.id),
+        SlotKind::Main { .. } => Some(item_id(main)),
         SlotKind::Continuation(c) => Some(&c.id),
         _ => None,
     }
@@ -272,6 +289,7 @@ pub fn box_lead_width(app: &App, id: &str) -> Option<usize> {
     let main = state.main.as_ref()?;
     let parent = app.compose()?.key.reply_to()?;
     let painter = Painter {
+        app,
         ctx: render_ctx(app),
         own: None,
         width: 0,
@@ -284,8 +302,12 @@ pub fn box_lead_width(app: &App, id: &str) -> Option<usize> {
         .map(|lead| lead.iter().map(|s| s.content.width()).sum())
 }
 
-fn header(id: &str, width: usize) -> Line<'static> {
-    let text = format!("{}  {COPY_LINK}", short_hash(id));
+fn header(id: &str, width: usize, linkable: bool) -> Line<'static> {
+    let text = if linkable {
+        format!("{}  {COPY_LINK}", short_hash(id))
+    } else {
+        short_hash(id)
+    };
     let pad = width.saturating_sub(1).saturating_sub(text.width());
     Line::raw(format!("{}{text}", " ".repeat(pad)))
 }
@@ -325,6 +347,7 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
     };
     let guest = matches!(app.session(), Session::Guest);
     let painter = Painter {
+        app,
         ctx: render_ctx(app),
         own: match app.session() {
             Session::SignedIn(me) => Some(me.handle.as_str()),
@@ -333,7 +356,8 @@ pub fn rows(app: &App, id: &str, width: u16) -> ThreadRows {
         width,
     };
     let mut out = ThreadRows::default();
-    out.lines.push(header(id, width));
+    out.lines
+        .push(header(id, width, matches!(main, ThreadItem::Commit(_))));
     let mut index = 0;
     let open_box = app
         .compose()

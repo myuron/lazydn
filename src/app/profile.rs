@@ -254,7 +254,7 @@ impl App {
             Screen::Thread(id) => {
                 let state = self.threads.get(id)?;
                 let commit = match self.selected_entry(id)? {
-                    Entry::Main => state.main.clone(),
+                    Entry::Main => state.main_commit().cloned(),
                     Entry::Continuation => state.continuation(id).cloned(),
                     Entry::Ancestor(i) => match state.ancestors.get(i) {
                         Some(ThreadItem::Commit(c)) => Some((**c).clone()),

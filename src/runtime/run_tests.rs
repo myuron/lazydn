@@ -701,3 +701,28 @@ fn star_save_and_pastel_go_to_the_executor_with_the_client_in_force() {
         .collect();
     assert_eq!(*rig.spawned.borrow(), expected);
 }
+
+#[test]
+fn delete_and_report_go_to_the_executor_with_the_client_in_force() {
+    let mut rig = rig_with(ClientKind::Signed, Ok(()), Ok(()));
+    let effects = vec![
+        Effect::DeleteCommit {
+            id: "c1".into(),
+            req: ReqId(7),
+        },
+        Effect::ReportCommit {
+            id: "c1".into(),
+            reason: crate::model::ReportReason::Spam,
+            details: Some("x".into()),
+            req: ReqId(8),
+        },
+    ];
+
+    rig.runtime.apply(effects.clone());
+
+    let expected: Vec<_> = effects
+        .into_iter()
+        .map(|e| (ClientKind::Signed, e))
+        .collect();
+    assert_eq!(*rig.spawned.borrow(), expected);
+}

@@ -9,8 +9,11 @@ mod key_status;
 mod last_visit;
 mod notifications;
 mod profile;
+mod removal;
+mod report;
 mod session;
 mod settings;
+mod settle;
 mod signin;
 mod status;
 mod thread;
@@ -137,6 +140,9 @@ pub enum Modal {
     SignIn,
     /// The composer, over every screen but Log.
     Composer,
+    /// Waiting for `y` or `n` before a delete.
+    ConfirmDelete,
+    Report,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,6 +253,16 @@ pub struct App {
     drafts_unsaved: bool,
     /// The star, save and pastel requests that are out, by commit.
     writes: HashMap<(writes::WriteKind, String), ReqId>,
+    /// The delete waiting for `y`.
+    confirm: Option<crate::dialogs::DeleteConfirm>,
+    /// The open report dialog.
+    report: Option<crate::dialogs::ReportState>,
+    /// The deletes that are out, by commit, with the hash the toast names.
+    deleting: HashMap<String, (ReqId, String)>,
+    /// What became of every commit deleted in this session; loads that were already out are settled by it.
+    deleted: HashMap<String, settle::Fate>,
+    /// The reports that are out, by commit, with the hash the toast names.
+    reports: HashMap<String, (ReqId, String)>,
 }
 
 impl App {
@@ -321,6 +337,11 @@ impl App {
             drafts_dirty_at: None,
             drafts_unsaved: false,
             writes: HashMap::new(),
+            confirm: None,
+            report: None,
+            deleting: HashMap::new(),
+            deleted: HashMap::new(),
+            reports: HashMap::new(),
         };
         if let KeyStatus::Unreadable { error, path } = &app.key_status {
             let text = toast::key_error_text(error, path);
@@ -414,7 +435,7 @@ impl App {
                 }
             }
 
-            Action::CloseModal => self.modal = None,
+            Action::CloseModal => self.close_modal(),
             Action::Commit => effects.extend(self.open_composer()),
             Action::Reply => effects.extend(self.open_reply()),
             Action::Quote => effects.extend(self.open_quote()),
@@ -425,7 +446,8 @@ impl App {
                 effects.extend(self.poll());
                 effects.extend(self.due_save());
             }
-            Action::FeedLoaded { key, req, page } => {
+            Action::FeedLoaded { key, req, mut page } => {
+                self.settle_page(&mut page);
                 let now = self.now;
                 self.feeds
                     .entry(key)
@@ -510,7 +532,11 @@ impl App {
                 username,
                 req,
                 response,
-            } => self.apply_user_loaded(&username, req, *response),
+            } => {
+                let mut response = *response;
+                self.settle_user(&mut response);
+                self.apply_user_loaded(&username, req, response)
+            }
             Action::UserFailed {
                 username,
                 req,
@@ -521,8 +547,11 @@ impl App {
                 username,
                 tab,
                 req,
-                page,
-            } => self.apply_feed_loaded(&username, tab, req, page),
+                mut page,
+            } => {
+                self.settle_page(&mut page);
+                self.apply_feed_loaded(&username, tab, req, page)
+            }
             Action::ProfileFeedFailed {
                 username,
                 tab,
@@ -567,6 +596,7 @@ impl App {
             Action::ApiStatus { rate, online } => self.apply_api_status(rate, online),
             Action::SetLastVisit { tab, id } => self.set_last_visit(tab, id),
             Action::Paste(text) if self.composer_focused() => self.paste_into_composer(&text),
+            Action::Paste(text) if self.report_input_focused() => self.paste_into_report(&text),
             sign_in_action @ (Action::Paste(_)
             | Action::SignInInput(_)
             | Action::SignInBackspace
@@ -589,6 +619,16 @@ impl App {
             Action::CommitFailed { req, failure } => self.commit_failed(req, &failure),
             Action::DraftsLoaded { account, drafts } => self.drafts_loaded(&account, drafts),
             Action::DraftsSaveFailed => self.drafts_unsaved = true,
+            Action::Delete => effects.extend(self.open_delete()),
+            Action::ConfirmDelete => effects.extend(self.confirm_delete()),
+            Action::Report => effects.extend(self.open_report()),
+            Action::ReportKey(key) => effects.extend(self.on_report_key(key)),
+            Action::DeleteDone { id, req } => effects.extend(self.delete_done(&id, req)),
+            Action::DeleteFailed { id, req, failure } => {
+                effects.extend(self.delete_failed(&id, req, &failure))
+            }
+            Action::ReportDone { id, req } => self.report_done(&id, req),
+            Action::ReportFailed { id, req, failure } => self.report_failed(&id, req, &failure),
             Action::ToggleStar => effects.extend(self.toggle_star()),
             Action::ToggleSave => effects.extend(self.toggle_save()),
             Action::GivePastel => effects.extend(self.give_pastel()),
@@ -616,12 +656,17 @@ impl App {
             Action::PastelFailed { id, req, failure } => self.pastel_failed(&id, req, &failure),
             Action::Refresh => effects.extend(self.refresh()),
             Action::ThreadLoaded { id, req, response } => {
-                if let Some(state) = self.threads.get_mut(&id)
-                    && state.main_pending == Some(req)
+                if self
+                    .threads
+                    .get(&id)
+                    .is_some_and(|s| s.main_pending == Some(req))
                 {
-                    let response = *response;
-                    state.main = Some(response.data);
-                    state.ancestors = response.ancestors;
+                    let (main, ancestors) = self.settle_thread_response(*response);
+                    let Some(state) = self.threads.get_mut(&id) else {
+                        return effects;
+                    };
+                    state.main = Some(main);
+                    state.ancestors = ancestors;
                     state.main_pending = None;
                     state.main_load = LoadState::Idle;
                     state.selected = state.ancestors.len();
@@ -650,8 +695,9 @@ impl App {
                 page,
             } => {
                 let kept = self.selected_entry(&thread);
+                let data = self.settle_replies(page.data);
                 if let Some(list) = self.reply_list_mut(&thread, &parent) {
-                    list.apply_loaded(req, page.data, page.meta.next_cursor);
+                    list.apply_loaded(req, data, page.meta.next_cursor);
                 }
                 self.restore_selection(&thread, kept);
             }

@@ -2,6 +2,7 @@ pub mod aside;
 pub mod card;
 pub mod compose;
 pub mod connections;
+pub mod dialogs;
 pub mod feed;
 pub mod help;
 pub mod layout;
@@ -53,6 +54,16 @@ pub fn draw(app: &App, frame: &mut Frame) {
         Some(Modal::Help) => help::render(frame, area),
         Some(Modal::SignIn) => signin::render(app, frame, area),
         Some(Modal::Composer) => compose::render_modal(app, frame, area),
+        Some(Modal::ConfirmDelete) => {
+            if let Some(confirm) = app.delete_confirm() {
+                dialogs::render_confirm(confirm, frame);
+            }
+        }
+        Some(Modal::Report) => {
+            if let Some(report) = app.report() {
+                dialogs::render_report(report, frame);
+            }
+        }
         None => {}
     }
     toast::render(app, frame, area, panes.status);
@@ -68,6 +79,8 @@ mod feed_tests;
 mod notifications_tests;
 #[cfg(test)]
 mod profile_tests;
+#[cfg(test)]
+mod removal_tests;
 #[cfg(test)]
 mod reply_tests;
 #[cfg(test)]

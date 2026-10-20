@@ -1395,7 +1395,7 @@ fn a_reply_to_the_main_commit_joins_the_replies_and_raises_the_count() {
 
     assert_eq!(thread_children(&app, MAIN), ["r0", "r1", "n1"]);
     assert_eq!(
-        state(&app, MAIN).main.map(|m| m.replies_count),
+        state(&app, MAIN).main_commit().map(|m| m.replies_count),
         Some(Some(3))
     );
     assert!(app.compose().is_none());
@@ -1422,7 +1422,7 @@ fn the_reply_only_counts_when_more_pages_of_replies_follow() {
 
     assert_eq!(thread_children(&app, MAIN), ["r0", "r1"]);
     assert_eq!(
-        state(&app, MAIN).main.map(|m| m.replies_count),
+        state(&app, MAIN).main_commit().map(|m| m.replies_count),
         Some(Some(6))
     );
 }
@@ -1493,7 +1493,7 @@ fn a_reply_to_an_ancestor_raises_the_count_of_the_ancestor() {
     let ancestors = state(&app, MAIN).ancestors;
     assert_eq!(ancestors.first().and_then(replies_count_of), Some(1));
     assert_eq!(
-        state(&app, MAIN).main.map(|m| m.replies_count),
+        state(&app, MAIN).main_commit().map(|m| m.replies_count),
         Some(Some(2))
     );
 }
@@ -1957,7 +1957,7 @@ fn a_reply_from_the_log_raises_the_count_of_the_cached_thread_and_joins_its_repl
     assert_eq!(count_in(&app, FOLLOWING, 0), Some(Some(1)), "log copy");
     assert_eq!(count_in(&app, FOLLOWING, 1), Some(Some(0)));
     assert_eq!(
-        state(&app, MAIN).main.map(|m| m.replies_count),
+        state(&app, MAIN).main_commit().map(|m| m.replies_count),
         Some(Some(3))
     );
     assert_eq!(thread_children(&app, MAIN), ["r0", "r1", "n1"]);
@@ -1975,7 +1975,7 @@ fn a_reply_from_the_thread_raises_the_count_of_the_card_in_the_log() {
     assert_eq!(count_in(&app, FOLLOWING, 0), Some(Some(1)), "log copy");
     assert_eq!(count_in(&app, FOLLOWING, 1), Some(Some(0)));
     assert_eq!(
-        state(&app, MAIN).main.map(|m| m.replies_count),
+        state(&app, MAIN).main_commit().map(|m| m.replies_count),
         Some(Some(3))
     );
 }

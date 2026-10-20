@@ -191,13 +191,14 @@ impl Env<'_> {
             has_draft: self.app.drafts().has_reply(&commit.id),
             ..CardOptions::default()
         };
-        let mut card = card_lines(
-            CardInput::Commit(commit),
-            &opts,
-            &self.ctx,
-            card_w,
-            &Prefix::default(),
-        );
+        let input = if self.app.is_deleting(&commit.id) {
+            CardInput::Deleting {
+                short_hash: &commit.short_hash,
+            }
+        } else {
+            CardInput::Commit(commit)
+        };
+        let mut card = card_lines(input, &opts, &self.ctx, card_w, &Prefix::default());
         if selected {
             apply_selection(&mut card, &self.ctx, card_w);
         }

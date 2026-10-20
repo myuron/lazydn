@@ -72,7 +72,7 @@ fn resets_in(secs: i64) -> Option<String> {
     })
 }
 
-fn write_failure_text(failure: &Failure) -> String {
+pub(super) fn write_failure_text(failure: &Failure) -> String {
     match (failure.code.as_str(), failure.retry_after, &failure.message) {
         ("rate_limited", Some(_), _) => toast::failure_text(failure),
         ("commit_unavailable", _, _) => "This commit isn't available.".into(),
@@ -88,7 +88,9 @@ impl App {
         if let Some(early) = self.session_gate() {
             return Err(early);
         }
-        self.selected_commit().ok_or_else(Vec::new)
+        self.selected_commit()
+            .filter(|card| !self.is_deleting(&card.id))
+            .ok_or_else(Vec::new)
     }
 
     fn begin_write(&mut self, kind: WriteKind, id: &str) -> Option<ReqId> {
@@ -111,7 +113,7 @@ impl App {
         true
     }
 
-    fn not_own(&self, card: &Commit) -> bool {
+    pub(super) fn not_own(&self, card: &Commit) -> bool {
         self.account_id() != Some(card.author.id.as_str())
     }
 

@@ -9,7 +9,11 @@ use crate::notifications::Filter;
 pub fn map_event(app: &App, event: &Event) -> Option<Action> {
     match event {
         Event::Key(key) => map_key(app, *key),
-        Event::Paste(text) if app.modal() == Some(Modal::SignIn) || app.composer_focused() => {
+        Event::Paste(text)
+            if app.modal() == Some(Modal::SignIn)
+                || app.composer_focused()
+                || app.report_input_focused() =>
+        {
             Some(Action::Paste(text.clone()))
         }
         Event::Resize(w, h) => Some(Action::Resize(*w, *h)),
@@ -46,12 +50,60 @@ fn map_sign_in_key(key: KeyEvent) -> Option<Action> {
     }
 }
 
+/// The confirmation reads `y`, `n`, Esc and Ctrl+C; every other key is ignored so that nothing slips past it.
+fn map_confirm_key(key: KeyEvent) -> Option<Action> {
+    if key.kind != KeyEventKind::Press {
+        return None;
+    }
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return (key.code == KeyCode::Char('c')).then_some(Action::Quit);
+    }
+    match key.code {
+        KeyCode::Char('y') => Some(Action::ConfirmDelete),
+        KeyCode::Char('n') | KeyCode::Esc => Some(Action::CloseModal),
+        _ => None,
+    }
+}
+
+/// With the details focused every key but Esc, Tab, Enter and Ctrl+C is text, so that no global key fires.
+fn map_report_key(app: &App, key: KeyEvent) -> Option<Action> {
+    let pressed = key.kind == KeyEventKind::Press;
+    let typed = key.kind != KeyEventKind::Release;
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        return (pressed && key.code == KeyCode::Char('c')).then_some(Action::Quit);
+    }
+    let details = app.report_input_focused();
+    let report = |k| Some(Action::ReportKey(k));
+    match key.code {
+        KeyCode::Esc if pressed => Some(Action::CloseModal),
+        KeyCode::Tab | KeyCode::BackTab if pressed => report(ReportKey::Tab),
+        KeyCode::Enter if pressed => report(ReportKey::Submit),
+        KeyCode::Char(c) if details && typed && !key.modifiers.contains(KeyModifiers::ALT) => {
+            report(ReportKey::Insert(c))
+        }
+        KeyCode::Backspace if details && typed => report(ReportKey::Backspace),
+        KeyCode::Delete if details && typed => report(ReportKey::Delete),
+        KeyCode::Left if details && typed => report(ReportKey::Left),
+        KeyCode::Right if details && typed => report(ReportKey::Right),
+        KeyCode::Home if details && typed => report(ReportKey::Home),
+        KeyCode::End if details && typed => report(ReportKey::End),
+        KeyCode::Char('j') | KeyCode::Down if !details && pressed => report(ReportKey::Down),
+        KeyCode::Char('k') | KeyCode::Up if !details && pressed => report(ReportKey::Up),
+        _ => None,
+    }
+}
+
 pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
     if app.modal() == Some(Modal::SignIn) {
         return map_sign_in_key(key);
     }
     if app.composer_focused() {
         return map_composer_key(key).map(Action::Compose);
+    }
+    match app.modal() {
+        Some(Modal::ConfirmDelete) => return map_confirm_key(key),
+        Some(Modal::Report) => return map_report_key(app, key),
+        _ => {}
     }
     if key.kind != KeyEventKind::Press {
         return None;
@@ -173,6 +225,8 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             KeyCode::Char('p') if commit_cards => Some(Action::GivePastel),
             KeyCode::Char('y') if commit_cards => Some(Action::CopyLink),
             KeyCode::Char('O') if commit_cards => Some(Action::OpenInBrowser),
+            KeyCode::Char('d') if commit_cards => Some(Action::Delete),
+            KeyCode::Char('!') if commit_cards => Some(Action::Report),
             KeyCode::Char('@') if !matches!(app.screen(), Screen::Connections(..)) => {
                 Some(Action::OpenAuthor)
             }
@@ -201,6 +255,24 @@ fn g_target(app: &App, c: char) -> Option<Screen> {
         'v' => Some(Screen::Saved),
         _ => None,
     }
+}
+
+/// A key typed in the report dialog; Esc and Ctrl+C are `CloseModal` and `Quit` instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportKey {
+    Up,
+    Down,
+    /// Tab: moves the focus between the reasons and the details.
+    Tab,
+    /// Enter: sends the report.
+    Submit,
+    Insert(char),
+    Backspace,
+    Delete,
+    Left,
+    Right,
+    Home,
+    End,
 }
 
 /// An editing or control key typed while a composer has the focus.

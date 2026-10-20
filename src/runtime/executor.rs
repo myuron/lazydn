@@ -78,6 +78,28 @@ async fn call(client: &ApiClient, effect: &Effect) -> Option<Outcome> {
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
         | Effect::CopyLink(_) => return None,
+        Effect::DeleteCommit { id, req } => client.delete_commit(id).await.map(|r| {
+            let action = Action::DeleteDone {
+                id: id.clone(),
+                req: *req,
+            };
+            (action, r.rate)
+        }),
+        Effect::ReportCommit {
+            id,
+            reason,
+            details,
+            req,
+        } => client
+            .report(id, *reason, details.as_deref())
+            .await
+            .map(|r| {
+                let action = Action::ReportDone {
+                    id: id.clone(),
+                    req: *req,
+                };
+                (action, r.rate)
+            }),
         Effect::StarCommit { id, on, req } => {
             let answer = if *on {
                 client.star(id).await
@@ -370,6 +392,16 @@ fn failed(effect: &Effect, failure: Failure, blocked_user: Option<Box<User>>) ->
         | Effect::SaveDrafts { .. }
         | Effect::LoadDrafts { .. }
         | Effect::CopyLink(_) => return None,
+        Effect::DeleteCommit { id, req } => Action::DeleteFailed {
+            id: id.clone(),
+            req: *req,
+            failure,
+        },
+        Effect::ReportCommit { id, req, .. } => Action::ReportFailed {
+            id: id.clone(),
+            req: *req,
+            failure,
+        },
         Effect::StarCommit { id, on, req } => Action::StarFailed {
             id: id.clone(),
             on: *on,

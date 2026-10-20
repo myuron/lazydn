@@ -110,7 +110,9 @@ pub(super) fn failure_in(action: &Action) -> Option<&Failure> {
         | Action::CommitFailed { failure, .. }
         | Action::StarFailed { failure, .. }
         | Action::BookmarkFailed { failure, .. }
-        | Action::PastelFailed { failure, .. } => Some(failure),
+        | Action::PastelFailed { failure, .. }
+        | Action::DeleteFailed { failure, .. }
+        | Action::ReportFailed { failure, .. } => Some(failure),
         _ => None,
     }
 }
@@ -132,7 +134,9 @@ pub(super) fn req_in(action: &Action) -> Option<ReqId> {
         | Action::CommitFailed { req, .. }
         | Action::StarFailed { req, .. }
         | Action::BookmarkFailed { req, .. }
-        | Action::PastelFailed { req, .. } => Some(*req),
+        | Action::PastelFailed { req, .. }
+        | Action::DeleteFailed { req, .. }
+        | Action::ReportFailed { req, .. } => Some(*req),
         _ => None,
     }
 }

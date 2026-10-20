@@ -30,11 +30,11 @@ const NOT_APPROVED: &str = "device_not_approved";
 
 // --- helpers ------------------------------------------------------------------
 
-fn key(app: &mut App, c: char) -> Vec<Effect> {
+pub(crate) fn key(app: &mut App, c: char) -> Vec<Effect> {
     press(app, KeyCode::Char(c))
 }
 
-fn mapped(app: &App, c: char) -> Option<Action> {
+pub(crate) fn mapped(app: &App, c: char) -> Option<Action> {
     let modifiers = if c.is_uppercase() {
         KeyModifiers::SHIFT
     } else {
@@ -46,15 +46,15 @@ fn mapped(app: &App, c: char) -> Option<Action> {
     )
 }
 
-fn card(id: &str, author: &str) -> Commit {
+pub(crate) fn card(id: &str, author: &str) -> Commit {
     commit_of(commit_json(id, author, 60))
 }
 
-fn card_with(id: &str, author: &str, extra: Value) -> Commit {
+pub(crate) fn card_with(id: &str, author: &str, extra: Value) -> Commit {
     commit_of(merge(commit_json(id, author, 60), extra))
 }
 
-fn feed_page(items: Vec<Commit>) -> FeedPage {
+pub(crate) fn feed_page(items: Vec<Commit>) -> FeedPage {
     FeedPage {
         items,
         next_cursor: None,
@@ -63,26 +63,26 @@ fn feed_page(items: Vec<Commit>) -> FeedPage {
     }
 }
 
-fn me_of(app: &App) -> Me {
+pub(crate) fn me_of(app: &App) -> Me {
     match app.session() {
         Session::SignedIn(me) => me.clone(),
         other => panic!("not signed in: {other:?}"),
     }
 }
 
-fn toast(app: &App) -> Option<(ToastKind, String)> {
+pub(crate) fn toast(app: &App) -> Option<(ToastKind, String)> {
     app.toast().map(|t| (t.kind, t.text.clone()))
 }
 
 /// Signed in on Following with `n` commits `c0`.. by alice; `c0` is selected.
-fn log_app(n: usize) -> App {
+pub(crate) fn log_app(n: usize) -> App {
     let (mut app, effects) = started(120, 40);
     deliver(&mut app, FOLLOWING, &effects, page(0, n, None));
     app
 }
 
 /// Like `log_app` for the given account.
-fn log_app_of(me: Me, items: Vec<Commit>) -> App {
+pub(crate) fn log_app_of(me: Me, items: Vec<Commit>) -> App {
     let mut app = App::new(Session::SignedIn(me), NOW, UtcOffset::UTC);
     let mut effects = app.update(Action::Init);
     effects.extend(app.update(Action::Resize(120, 40)));
@@ -91,7 +91,7 @@ fn log_app_of(me: Me, items: Vec<Commit>) -> App {
 }
 
 /// A guest on the Latest tab with the sign-in dialog closed. A guest never fetches the log, so it holds no card.
-fn guest_log() -> App {
+pub(crate) fn guest_log() -> App {
     let mut app = guest(120, 40);
     app.update(Action::Init);
     app.update(Action::CloseModal);
@@ -99,7 +99,7 @@ fn guest_log() -> App {
 }
 
 /// A guest on the public profile of alice, which lists the given commits.
-fn guest_profile(items: Vec<Commit>) -> App {
+pub(crate) fn guest_profile(items: Vec<Commit>) -> App {
     let mut app = guest(120, 40);
     app.update(Action::CloseModal);
     let effects = open_profile(&mut app, "alice");
@@ -116,7 +116,7 @@ fn guest_profile(items: Vec<Commit>) -> App {
 }
 
 /// Saved with `n` commits that are all saved already.
-fn saved_app(n: usize) -> App {
+pub(crate) fn saved_app(n: usize) -> App {
     let mut app = signed_in(120, 40);
     let effects = app.update(Action::Goto(Screen::Saved));
     let items = (0..n)
@@ -153,7 +153,7 @@ fn copies(app: &App, id: &str) -> Vec<(String, Commit)> {
         }
     }
     if let Some(thread) = app.thread(MAIN) {
-        for c in thread.main.iter().filter(|c| c.id == id) {
+        if let Some(c) = thread.main_commit().filter(|c| c.id == id) {
             out.push(("thread main".to_string(), c.clone()));
         }
         let listed = thread.children.values().flat_map(|l| l.items.iter());
@@ -387,7 +387,7 @@ fn writes(effects: &[Effect]) -> usize {
     star_effects(effects).len() + bookmark_effects(effects).len() + pastel_effects(effects).len()
 }
 
-fn pkce() -> crate::api::pkce::Pkce {
+pub(crate) fn pkce() -> crate::api::pkce::Pkce {
     crate::api::pkce::Pkce {
         verifier: "verifier".into(),
         challenge: "challenge".into(),
@@ -395,7 +395,7 @@ fn pkce() -> crate::api::pkce::Pkce {
 }
 
 /// Signs in again after the server refused the device, and loads Following afresh.
-fn sign_in_again(app: &mut App) {
+pub(crate) fn sign_in_again(app: &mut App) {
     app.update(Action::FeedFailed {
         key: FOLLOWING,
         req: ReqId(1),

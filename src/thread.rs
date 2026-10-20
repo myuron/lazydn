@@ -80,7 +80,7 @@ pub fn short_hash(id: &str) -> String {
 
 #[derive(Debug, Clone, Default)]
 pub struct ThreadState {
-    pub main: Option<Commit>,
+    pub main: Option<ThreadItem>,
     pub ancestors: Vec<ThreadItem>,
     pub main_pending: Option<ReqId>,
     pub main_load: LoadState,
@@ -165,6 +165,13 @@ fn is_continuation(item: &ThreadItem, main: &Commit) -> bool {
     }
 }
 
+/// What the lists of replies need to know of the main item, which may be a tombstone.
+#[derive(Clone, Copy)]
+struct MainInfo<'a> {
+    id: &'a str,
+    replies: u32,
+}
+
 /// Where a list sits in the tree: the owner's guides, the level of its items and the flat column's last id.
 #[derive(Clone, Copy)]
 struct Level<'a> {
@@ -177,7 +184,7 @@ struct Level<'a> {
 impl ThreadState {
     /// The author's own first direct reply, which is drawn right under the main commit.
     pub fn continuation(&self, thread: &str) -> Option<&Commit> {
-        let main = self.main.as_ref()?;
+        let main = self.main_commit()?;
         self.children
             .get(thread)?
             .items
@@ -215,6 +222,14 @@ impl ThreadState {
             .flatten()
     }
 
+    /// The main commit while it exists; a deleted one has none.
+    pub fn main_commit(&self) -> Option<&Commit> {
+        match self.main.as_ref()? {
+            ThreadItem::Commit(c) => Some(c),
+            ThreadItem::Tombstone(_) => None,
+        }
+    }
+
     pub fn main_failed(&self) -> bool {
         matches!(self.main_load, LoadState::Failed { .. })
     }
@@ -228,8 +243,12 @@ impl ThreadState {
 
     pub fn slots(&self, thread: &str, guest: bool) -> Vec<Slot> {
         // A failed refresh hides the stale commit, so nothing below it may stay selectable.
-        let Some(main) = self.main.as_ref().filter(|_| !self.main_failed()) else {
+        let Some(main_item) = self.main.as_ref().filter(|_| !self.main_failed()) else {
             return Vec::new();
+        };
+        let main = MainInfo {
+            id: item_id(main_item),
+            replies: item_replies(main_item),
         };
         let mut out = Vec::new();
         for (i, item) in self.ancestors.iter().enumerate() {
@@ -250,7 +269,7 @@ impl ThreadState {
             top: None,
         });
         if guest {
-            if main.replies_count.unwrap_or(0) > 0 {
+            if main.replies > 0 {
                 out.push(Slot::plain(SlotKind::SignIn));
             }
             return out;
@@ -299,14 +318,14 @@ impl ThreadState {
     }
 
     /// Emits the rows of the list under `parent`; `depth` is the level of its items (4 and deeper are drawn flat).
-    fn emit_list(&self, out: &mut Vec<Slot>, main: &Commit, parent: &str, level: Level) {
+    fn emit_list(&self, out: &mut Vec<Slot>, main: MainInfo, parent: &str, level: Level) {
         let Level {
             owner_lasts,
             depth,
             last3,
             owner_top,
         } = level;
-        let thread_id = main.id.as_str();
+        let thread_id = main.id;
         let first_level = parent == thread_id;
         let list = self.children.get(parent);
         let items: Vec<&ThreadItem> = if first_level {
@@ -411,7 +430,7 @@ impl ThreadState {
     fn emit_tail(
         &self,
         out: &mut Vec<Slot>,
-        main: &Commit,
+        main: MainInfo,
         parent: &str,
         lasts: &[bool],
         shown: usize,
@@ -431,7 +450,7 @@ impl ThreadState {
                     "(loading...)".to_string()
                 }
             } else if first_level {
-                let missing = i64::from(main.replies_count.unwrap_or(0)) - shown as i64;
+                let missing = i64::from(main.replies) - shown as i64;
                 if missing > 0 {
                     format!("Show {missing} more")
                 } else {

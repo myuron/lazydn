@@ -1,0 +1,28 @@
+---
+source: src/ui/removal_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────────────────────────────────────────────┐"
+"│▌Log  Notifs(12)  Profile  Saved  Settings                │"
+"└──────────────────────────────────────────────────────────┘"
+"┏ Log ━━╔ Report a1b2c3d ══════════════════════════╗━━━━━━━┓"
+"┃     Fo║                                          ║g      ┃"
+"┃     ━━║  (•) spam                                ║       ┃"
+"┃ ┆     ║  ( ) harassment                          ║       ┃"
+"┃ ◌  Wha║  ( ) unsafe                              ║       ┃"
+"┃ ┆     ║  ( ) other                               ║ommit  ┃"
+"┃ ┆     ║                                          ║       ┃"
+"┃ ╎ ── T║ details (optional, 500 chars)            ║────── ┃"
+"┃ │     ║ ┌──────────────────────────────────────┐ ║       ┃"
+"┃▌◉ Alic║ │ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │ ║1b2c3d ┃"
+"┃▌│ body║ │ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │ ║       ┃"
+"┃▌│ ☆ 1 ║ │ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx │ ║   ⊡ ⚑ ┃"
+"┃ │     ║ │ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx     │ ║       ┃"
+"┃ ◉ Bob ║ └──────────────────────────────────────┘ ║0000c1 ┃"
+"┃ │ body║                                  500/500 ║       ┃"
+"┃ │ ☆ 1 ║           Esc cancel   Enter submit      ║   ⊡ ⚑ ┃"
+"┃ │     ╚══════════════════════════════════════════╝       ┃"
+"┃ ◉ Carol @carol · 1m                              00000c2 ┃"
+"┃ │ body of c2                                             ┃"
+"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" j/k ↵ c ?                                              -/- "

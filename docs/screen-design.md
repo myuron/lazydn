@@ -672,9 +672,9 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 削除している間は、カードを次の表示に置き換えます。
 
 ```text
-┌──────────────────────────────────────────┐
-│ rm a1b2c3d → /dev/null                   │
-└──────────────────────────────────────────┘
+┌────────────────────────┐
+│ rm a1b2c3d → /dev/null │
+└────────────────────────┘
 ```
 
 ### 通報
@@ -691,11 +691,18 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║ ┌──────────────────────────────────────┐ ║
 ║ │                                      │ ║
 ║ └──────────────────────────────────────┘ ║
+║                                    0/500 ║
 ║           Esc cancel   Enter submit      ║
 ╚══════════════════════════════════════════╝
 ```
 
-`reason` は `spam`、`harassment`、`unsafe`、`other` から選びます。`details` には 500 文字まで入力できます。
+`reason` は `spam`、`harassment`、`unsafe`、`other` から選びます。`details` には 500 文字（コードポイント）まで入力できます。
+
+- `▌` は、reason にフォーカスがあるときだけ、選択中の行に出します。
+- 欄の下の行に、右寄せで `N/500` を出します。失敗したときは、同じ行の左に `✗ <理由>` を出し、カウンタの左の幅に収まらなければ `…` で切ります。`network` のときは `network error — press Enter to retry` です。
+- `details` の欄は、折り返して 1〜4 行まで伸びます。モーダルの高さは 13 + 行数で、画面の中央に置き直します。4 行を超えたら、カーソルの行が見えるようにスクロールします。
+- 送信中は、案内の行が `Esc cancel   sending…` になり、入力は受け付けません。
+- 失敗したときはモーダルの中にエラーを出し、トーストは出しません。`Esc` で閉じたあとに届いた答えは、トーストで知らせます。
 
 ### キー一覧
 
@@ -714,10 +721,11 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║  g n     notifications    O   open in browser            ║
 ║  g p     profile          .   more menu                  ║
 ║  g s     settings         d   revert (own)               ║
-║  g v     saved           Global                          ║
-║  g g / G top / bottom     c   write a commit             ║
-║  @       author profile   R   refresh                    ║
-║  3 / 4   follow lists     ?   this help                  ║
+║  g v     saved            !   report                     ║
+║  g g / G top / bottom    Global                          ║
+║  @       author profile   c   write a commit             ║
+║  3 / 4   follow lists     R   refresh                    ║
+║                           ?   this help                  ║
 ║                           Q   quit                       ║
 ╚══════════════════════════════════════════════════════════╝
 ```
@@ -810,7 +818,7 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 - **終了は `q` ではなく `Q`**: TUI では `q` で終了するのが一般的ですが、Web 版では `q` が Quote に割り当てられています。Web 版との一致を優先して、終了は `Q` と `Ctrl+C` にします。いまの `src/main.rs` は `q` と `Esc` で終了するので、実装するときに変えます。
 - **`1`〜`3` と `3` / `4` の違い**: Log と Settings の `1`〜`3` は、同じ画面の中でタブを切り替えます。Profile の `1` / `2` も同じ画面の中のタブ（Commits / Replies）の切り替えですが、`3` / `4` はタブではなく、別の画面（Followers / Following）を履歴に積んで開くので、`Esc` で Profile に戻ります。Followers / Following の `1` / `2` は、履歴に積まずに画面を置き換えます。
 - **`@` は作者のプロフィールを開く**: カードの中で操作対象を選ぶ仕組みがないため、Web 版の「作者名をクリック」に当たる操作を、選択中のカードの作者に対する `@` にしています。いま見ているプロフィールと同じ人のカードでは何もしません。
-- **文字の入力中**（Composer、Code、`details`）は、`Esc`、投稿のキー（`Ctrl+Enter`、`Ctrl+S`）、`Ctrl+C` 以外のキーをすべて入力として扱います。`j`、`q`、`?`、`Q` も文字として入ります。
+- **文字の入力中**（Composer、Code、`details`）は、`Esc`、投稿のキー（`Ctrl+Enter`、`Ctrl+S`）、`Ctrl+C` 以外のキーをすべて入力として扱います。`j`、`q`、`?`、`Q` も文字として入ります。通報の `details` だけは例外で、`Tab`（理由の選択に戻る）と `Enter`（送信）も入力ではなく操作です。
 - **破壊的な操作には大文字を使う**: `B`（ブロック）と `D`（アカウントの削除）は、押し間違えを避けるために大文字にしています。
 
 ## Web 版との差分

@@ -7,8 +7,8 @@ use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
 use crate::drafts::Drafts;
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::model::{
-    Commit, GroupPage, MeResponse, NotificationsPage, Page, PastelResponse, ThreadItem,
-    ThreadResponse, User, UserResponse,
+    Commit, GroupPage, MeResponse, NotificationsPage, Page, PastelResponse, ReportReason,
+    ThreadItem, ThreadResponse, User, UserResponse,
 };
 use crate::notifications::Filter;
 
@@ -339,6 +339,34 @@ pub enum Action {
         req: ReqId,
         failure: Failure,
     },
+    /// `d`: asks whether to delete the selected card.
+    Delete,
+    /// `y` in the confirmation: deletes the card.
+    ConfirmDelete,
+    /// `!`: opens the report dialog for the selected card.
+    Report,
+    /// A key typed in the report dialog.
+    ReportKey(crate::keymap::ReportKey),
+    /// The server deleted the commit.
+    DeleteDone {
+        id: String,
+        req: ReqId,
+    },
+    DeleteFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server took the report.
+    ReportDone {
+        id: String,
+        req: ReqId,
+    },
+    ReportFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
     /// The write of the drafts failed, so they are still unsaved.
     DraftsSaveFailed,
     /// The drafts of `account` read from disk; they fill only the slots that hold no text yet.
@@ -459,6 +487,18 @@ pub enum Effect {
     },
     /// Copies a link from the server to the clipboard once the runtime has checked its origin.
     CopyLink(String),
+    /// Deletes the commit.
+    DeleteCommit {
+        id: String,
+        req: ReqId,
+    },
+    /// Reports the commit; `details` is already trimmed and `None` when empty.
+    ReportCommit {
+        id: String,
+        reason: ReportReason,
+        details: Option<String>,
+        req: ReqId,
+    },
     /// Writes the drafts of `account` to disk. The runtime does it on the spot, not on a task.
     SaveDrafts {
         account: String,

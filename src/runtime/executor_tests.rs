@@ -1692,3 +1692,249 @@ async fn copying_a_link_is_not_an_api_call_and_has_no_failed_action() {
     assert_eq!(failure_for(&effect, "panic"), None);
     assert!(received(&server).await.is_empty());
 }
+
+// --- 7. delete and report -----------------------------------------------------------------------
+
+fn delete_effect() -> Effect {
+    Effect::DeleteCommit {
+        id: "c-1".into(),
+        req: REQ,
+    }
+}
+
+fn report_effect(details: Option<&str>) -> Effect {
+    Effect::ReportCommit {
+        id: "c-1".into(),
+        reason: crate::model::ReportReason::Harassment,
+        details: details.map(String::from),
+        req: REQ,
+    }
+}
+
+fn no_content() -> ResponseTemplate {
+    ResponseTemplate::new(204)
+}
+
+fn failed_removal(effect: &Effect, failure: Failure) -> Action {
+    match effect {
+        Effect::DeleteCommit { id, req } => Action::DeleteFailed {
+            id: id.clone(),
+            req: *req,
+            failure,
+        },
+        Effect::ReportCommit { id, req, .. } => Action::ReportFailed {
+            id: id.clone(),
+            req: *req,
+            failure,
+        },
+        other => panic!("not a delete or a report: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_delete_calls_the_commit_endpoint_with_delete_and_answers_with_its_id() {
+    let server = MockServer::start().await;
+    serve_method(&server, "DELETE", "/api/v1/commits/c-1", no_content()).await;
+
+    let (results, status) = split(execute(&signed(&server), delete_effect()).await);
+
+    assert_eq!(
+        results,
+        vec![Action::DeleteDone {
+            id: "c-1".into(),
+            req: REQ,
+        }]
+    );
+    assert_eq!(status, vec![ONLINE]);
+    assert_eq!(received(&server).await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_report_posts_the_reason_and_the_details_to_the_reports_endpoint() {
+    let server = MockServer::start().await;
+    serve_method(&server, "POST", "/api/v1/commits/c-1/reports", no_content()).await;
+
+    let (results, status) =
+        split(execute(&signed(&server), report_effect(Some("sells pills"))).await);
+
+    assert_eq!(
+        results,
+        vec![Action::ReportDone {
+            id: "c-1".into(),
+            req: REQ,
+        }]
+    );
+    assert_eq!(status, vec![ONLINE]);
+    let requests = received(&server).await;
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).expect("a json body");
+    assert_eq!(
+        body,
+        serde_json::json!({"reason": "harassment", "details": "sells pills"})
+    );
+}
+
+#[tokio::test]
+async fn a_report_without_details_sends_the_reason_alone() {
+    let server = MockServer::start().await;
+    serve_method(&server, "POST", "/api/v1/commits/c-1/reports", no_content()).await;
+
+    execute(&signed(&server), report_effect(None)).await;
+
+    let requests = received(&server).await;
+    assert_eq!(requests.len(), 1);
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).expect("a json body");
+    assert_eq!(body, serde_json::json!({"reason": "harassment"}));
+}
+
+#[tokio::test]
+async fn a_refused_delete_or_report_carries_the_code_and_the_message_of_the_server() {
+    let cases = [
+        (
+            delete_effect(),
+            "DELETE",
+            "/api/v1/commits/c-1",
+            404,
+            "commit_unavailable",
+        ),
+        (
+            report_effect(None),
+            "POST",
+            "/api/v1/commits/c-1/reports",
+            403,
+            "own_commit",
+        ),
+        (
+            report_effect(None),
+            "POST",
+            "/api/v1/commits/c-1/reports",
+            404,
+            "commit_unavailable",
+        ),
+        (
+            report_effect(Some("x")),
+            "POST",
+            "/api/v1/commits/c-1/reports",
+            422,
+            "validation_failed",
+        ),
+    ];
+    for (effect, verb, p, status, code) in cases {
+        let server = MockServer::start().await;
+        serve_method(&server, verb, p, error_body(status, code)).await;
+
+        let (results, online) = split(execute(&signed(&server), effect.clone()).await);
+
+        let failure = Failure {
+            code: code.into(),
+            retry_after: None,
+            message: Some("m".into()),
+        };
+        assert_eq!(
+            results,
+            vec![failed_removal(&effect, failure)],
+            "{effect:?} {status}"
+        );
+        assert_eq!(online, vec![ONLINE], "{effect:?} {status}");
+    }
+}
+
+#[tokio::test]
+async fn a_rate_limited_report_carries_retry_after() {
+    let server = MockServer::start().await;
+    serve_method(
+        &server,
+        "POST",
+        "/api/v1/commits/c-1/reports",
+        error_body(429, "rate_limited").insert_header("Retry-After", "20"),
+    )
+    .await;
+
+    let (results, _) = split(execute(&signed(&server), report_effect(None)).await);
+
+    let failure = Failure {
+        code: "rate_limited".into(),
+        retry_after: Some(20),
+        message: Some("m".into()),
+    };
+    assert_eq!(results, vec![failed_removal(&report_effect(None), failure)]);
+}
+
+#[tokio::test]
+async fn a_delete_or_report_that_cannot_reach_the_server_fails_as_network() {
+    for effect in [delete_effect(), report_effect(None)] {
+        let actions = execute(&unreachable_client(), effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![
+                failed_removal(&effect, Failure::new("network")),
+                Action::ApiStatus {
+                    rate: None,
+                    online: false
+                }
+            ],
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_guest_can_neither_delete_nor_report_and_nothing_is_sent() {
+    let server = MockServer::start().await;
+    let guest = client_for(&server.uri(), false);
+
+    for effect in [delete_effect(), report_effect(None)] {
+        let actions = execute(&guest, effect.clone()).await;
+
+        assert_eq!(
+            actions,
+            vec![failed_removal(&effect, Failure::new("sign_in_required"))],
+            "{effect:?}"
+        );
+    }
+    assert!(received(&server).await.is_empty());
+}
+
+#[test]
+fn a_panicked_delete_or_report_fails_into_its_failed_action_with_the_req() {
+    for effect in [delete_effect(), report_effect(Some("x"))] {
+        assert_eq!(
+            failure_for(&effect, "panic"),
+            Some(failed_removal(&effect, Failure::new("panic"))),
+            "{effect:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_delete_refused_without_an_api_code_is_named_after_the_status() {
+    let cases = [
+        (403, "http_403", "This action is unauthorized."),
+        (
+            404,
+            "http_404",
+            "No query results for model [App\\Models\\Commit].",
+        ),
+    ];
+    for (status, code, message) in cases {
+        let server = MockServer::start().await;
+        let body = serde_json::json!({ "message": message }).to_string();
+        let response =
+            ResponseTemplate::new(status).set_body_raw(body.into_bytes(), "application/json");
+        serve_method(&server, "DELETE", "/api/v1/commits/c-1", response).await;
+
+        let (results, _) = split(execute(&signed(&server), delete_effect()).await);
+
+        let failure = Failure {
+            code: code.into(),
+            retry_after: None,
+            message: Some(message.into()),
+        };
+        assert_eq!(
+            results,
+            vec![failed_removal(&delete_effect(), failure)],
+            "{status}"
+        );
+    }
+}

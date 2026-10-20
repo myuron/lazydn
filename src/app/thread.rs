@@ -111,7 +111,7 @@ impl App {
         };
         match self.selected_entry(id)? {
             Entry::Ancestor(i) => state.ancestors.get(i).and_then(commit_of),
-            Entry::Main => state.main.clone(),
+            Entry::Main => state.main_commit().cloned(),
             Entry::Continuation => state.continuation(id).cloned(),
             Entry::Reply(item, _) => self.find_item(id, &item).as_ref().and_then(commit_of),
             Entry::ShowMore(_) => None,
