@@ -1,9 +1,9 @@
 use color_eyre::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::{
-    DefaultTerminal, Frame,
-    widgets::{Block, Paragraph},
-};
+use crossterm::event::{self, Event};
+use lazydn::action::{Action, Effect};
+use lazydn::app::{App, Session};
+use lazydn::{keymap, ui};
+use ratatui::DefaultTerminal;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -15,20 +15,20 @@ fn main() -> Result<()> {
 }
 
 fn run(mut terminal: DefaultTerminal) -> Result<()> {
+    let mut app = App::new(Session::Guest);
+    let size = terminal.size()?;
+    app.update(Action::Resize(size.width, size.height));
     loop {
-        terminal.draw(draw)?;
-        // Ignore key release events so each key press is handled exactly once.
-        if let Event::Key(key) = event::read()?
-            && key.kind == KeyEventKind::Press
-            && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
+        terminal.draw(|frame| ui::draw(&app, frame))?;
+        let action = match event::read()? {
+            Event::Key(key) => keymap::map_key(&app, key),
+            Event::Resize(w, h) => Some(Action::Resize(w, h)),
+            _ => None,
+        };
+        if let Some(action) = action
+            && app.update(action).contains(&Effect::Quit)
         {
             return Ok(());
         }
     }
-}
-
-fn draw(frame: &mut Frame) {
-    let block = Block::bordered().title(" lazydn ");
-    let paragraph = Paragraph::new("Press q to quit.").block(block);
-    frame.render_widget(paragraph, frame.area());
 }
