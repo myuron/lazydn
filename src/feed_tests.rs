@@ -102,6 +102,8 @@ fn req_of(effect: &Effect) -> Option<ReqId> {
         | Effect::FetchUserCommits { .. }
         | Effect::FetchConnections { .. }
         | Effect::FetchMe { .. }
+        | Effect::FetchMuted { .. }
+        | Effect::FetchBlocked { .. }
         | Effect::FetchNotifications { .. }
         | Effect::FetchNotificationGroup { .. }
         | Effect::Quit => None,

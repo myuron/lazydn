@@ -1,6 +1,6 @@
 use time::OffsetDateTime;
 
-use crate::app::{ConnTab, LogTab, ProfileTab, Screen};
+use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab};
 use crate::feed::{FeedKey, FeedPage, ReqId};
 use crate::model::{
     GroupPage, MeResponse, NotificationsPage, Page, ThreadItem, ThreadResponse, User, UserResponse,
@@ -150,6 +150,24 @@ pub enum Action {
     OpenConnections(ConnTab),
     /// `1` / `2` on a profile.
     SwitchProfileTab(ProfileTab),
+    /// `1`..`3` on Settings.
+    SwitchSettingsTab(SettingsTab),
+    MutedLoaded {
+        req: ReqId,
+        page: Page<User>,
+    },
+    MutedFailed {
+        req: ReqId,
+        code: String,
+    },
+    BlockedLoaded {
+        req: ReqId,
+        page: Page<User>,
+    },
+    BlockedFailed {
+        req: ReqId,
+        code: String,
+    },
     /// `1` / `2` on Followers / Following; replaces the screen without a history entry.
     SwitchConnTab(ConnTab),
 }
@@ -198,6 +216,14 @@ pub enum Effect {
         req: ReqId,
     },
     FetchMe {
+        req: ReqId,
+    },
+    FetchMuted {
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchBlocked {
+        cursor: Option<String>,
         req: ReqId,
     },
     /// Marks every notification read on the server, so it must only follow an explicit user step.

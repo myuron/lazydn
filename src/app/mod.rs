@@ -5,6 +5,7 @@ use time::{OffsetDateTime, UtcOffset};
 
 mod notifications;
 mod profile;
+mod settings;
 mod thread;
 
 use crate::action::{Action, Effect};
@@ -13,6 +14,7 @@ use crate::layout::LayoutMode;
 use crate::model::Lane;
 use crate::notifications::NotificationsState;
 use crate::profile::{ConnectionsState, ProfileState};
+use crate::settings::SettingsState;
 use crate::thread::ThreadState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +64,21 @@ pub enum ConnTab {
     #[default]
     Followers,
     Following,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum SettingsTab {
+    #[default]
+    Profile,
+    Appearance,
+    Safety,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +146,9 @@ pub struct Prefs {
     pub ascii: bool,
     pub truecolor: bool,
     pub reply_preview_limit: usize,
+    pub theme: Theme,
+    pub collapse_nav: bool,
+    pub lane_dimming: bool,
 }
 
 impl Default for Prefs {
@@ -137,6 +157,9 @@ impl Default for Prefs {
             ascii: false,
             truecolor: true,
             reply_preview_limit: 3,
+            theme: Theme::Dark,
+            collapse_nav: false,
+            lane_dimming: false,
         }
     }
 }
@@ -157,6 +180,7 @@ pub struct App {
     profiles: HashMap<String, ProfileState>,
     connections: HashMap<(String, ConnTab), ConnectionsState>,
     notifications: NotificationsState,
+    settings: SettingsState,
     /// The request whose answer may still arrive; none are stacked.
     me_pending: Option<ReqId>,
     last_me_fetch: Option<OffsetDateTime>,
@@ -193,6 +217,7 @@ impl App {
             profiles: HashMap::new(),
             connections: HashMap::new(),
             notifications: NotificationsState::default(),
+            settings: SettingsState::default(),
             me_pending: None,
             last_me_fetch: None,
             last_notif_req: None,
@@ -315,6 +340,11 @@ impl App {
             }
             Action::ToggleFilter(filter) => effects.extend(self.notif_toggle_filter(filter)),
             Action::ToggleAllFilters => effects.extend(self.notif_toggle_all_filters()),
+            Action::SwitchSettingsTab(tab) => effects.extend(self.settings_switch_tab(tab)),
+            Action::MutedLoaded { req, page } => self.apply_muted_loaded(req, page),
+            Action::MutedFailed { req, code } => self.apply_muted_failed(req, code),
+            Action::BlockedLoaded { req, page } => self.apply_blocked_loaded(req, page),
+            Action::BlockedFailed { req, code } => self.apply_blocked_failed(req, code),
             Action::MeLoaded { req, response } => self.apply_me_loaded(req, &response),
             Action::MeFailed { req, .. } => {
                 if self.me_pending == Some(req) {
@@ -552,6 +582,14 @@ impl App {
         &self.notifications
     }
 
+    pub fn settings(&self) -> &SettingsState {
+        &self.settings
+    }
+
+    pub fn set_prefs(&mut self, prefs: Prefs) {
+        self.prefs = prefs;
+    }
+
     pub fn now(&self) -> OffsetDateTime {
         self.now
     }
@@ -643,6 +681,9 @@ impl App {
     }
 
     fn entry_fetch(&mut self) -> Vec<Effect> {
+        if self.on_settings() {
+            return self.settings_entry();
+        }
         if let Some(name) = self.profile_name() {
             if self.profile(&name).is_some() {
                 return Vec::new();
@@ -667,6 +708,9 @@ impl App {
     }
 
     fn refresh(&mut self) -> Vec<Effect> {
+        if self.on_settings() {
+            return self.settings_refresh();
+        }
         if let Some(name) = self.profile_name() {
             return self.profile_refresh(&name);
         }

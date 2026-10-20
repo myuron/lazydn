@@ -8,6 +8,7 @@ pub mod nav;
 pub mod notifications;
 pub mod profile;
 pub mod screens;
+pub mod settings;
 pub mod signin;
 pub mod statusline;
 pub mod theme;
@@ -61,6 +62,8 @@ mod feed_tests;
 mod notifications_tests;
 #[cfg(test)]
 mod profile_tests;
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

@@ -275,7 +275,7 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 
 | 要素 | 内容 |
 | --- | --- |
-| タブ | `Following │ Latest │ Trending`。`1`〜`3` で切り替えます。選んだタブには、下に `━` の線を引きます |
+| タブ | `Following`、`Latest`、`Trending` を画面の幅の 3 等分に中央寄せで並べます。`1`〜`3` で切り替え、選んだタブの下に `━` の線を引きます |
 | インライン composer | タブのすぐ下に置きます。`c` を押すと、フォーカスがここへ移ります。ゲストには表示しません |
 | 新着の通知 | 30 秒ごとに `since=<先頭の commit の id>` を付けて取得し、`new_commits_count` が 1 以上なら `↑ N new commits` を表示します。`R` を押すか、一覧の先頭で `k` を押すと読み込みます |
 | 一覧 | commit カードを並べます。最後から 5 件以内まで進んだら、`cursor` で次の 20 件を先に読み込みます |
@@ -461,21 +461,21 @@ Nav の Saved（`g v`）で開きます。保存した commit を、保存した
 
 ### Settings
 
-Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance、Safety のタブを切り替えます。
+Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance、Safety のタブを切り替えます。タブは画面の幅を 3 等分して中央寄せで並べ、選んだタブの下に `━` の線を引きます。ラジオは項目単位で詰めて並べ、幅が足りないときは折り返します。
 
 ```text
 ┏ Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Profile │ Appearance │ Safety                                    ┃
-┃ ━━━━━━━                                                          ┃
+┃       Profile              Appearance              Safety        ┃
+┃       ━━━━━━━                                                    ┃
 ┃                                                                  ┃
 ┃ Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃
 ┃                                                                  ┃
 ┃ Lane color                                                       ┃
-┃  ( ) Auto   (•) ● orange  ( ) ● green   ( ) ● violet             ┃
-┃  ( ) ● teal ( ) ● rose    ( ) ● ochre   ( ) custom #______       ┃
+┃  ( ) Auto (green)  (•) ● orange  ( ) ● green  ( ) ● violet       ┃
+┃  ( ) ● teal  ( ) ● rose  ( ) ● ochre  ( ) custom #______         ┃
 ┃  preview:  ◉──●──●  myuron                                       ┃
 ┃                                                                  ┃
-┃ Pasteis mode                                        [x] on       ┃
+┃ Pasteis mode                                              [x] on ┃
 ┃  10 per day, resets 00:00 UTC                                    ┃
 ┃                                                                  ┃
 ┃ Danger zone                                                      ┃

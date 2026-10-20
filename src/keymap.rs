@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::action::Action;
-use crate::app::{App, ConnTab, LogTab, Modal, Pane, ProfileTab, Screen, Session};
+use crate::app::{App, ConnTab, LogTab, Modal, Pane, ProfileTab, Screen, Session, SettingsTab};
 use crate::layout::LayoutMode;
 use crate::notifications::Filter;
 
@@ -92,6 +92,16 @@ pub fn map_key(app: &App, key: KeyEvent) -> Option<Action> {
             (Screen::Notifications, KeyCode::Char('a')) => {
                 return Some(Action::ToggleAllFilters);
             }
+            (Screen::Settings, KeyCode::Char(c @ '1'..='3')) => {
+                return Some(Action::SwitchSettingsTab(
+                    [
+                        SettingsTab::Profile,
+                        SettingsTab::Appearance,
+                        SettingsTab::Safety,
+                    ][usize::from(c as u8 - b'1')],
+                ));
+            }
+            (Screen::Settings, KeyCode::Char('R')) => return Some(Action::Refresh),
             (Screen::Connections(..), KeyCode::Char('1')) => {
                 return Some(Action::SwitchConnTab(ConnTab::Followers));
             }

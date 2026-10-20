@@ -4,7 +4,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
-use crate::app::{App, ConnTab, LogTab, Pane, Screen, Session};
+use crate::app::{App, ConnTab, LogTab, Pane, Screen, Session, SettingsTab};
 use crate::feed::FeedKey;
 use crate::model::User;
 use crate::ui::card::apply_selection;
@@ -13,7 +13,7 @@ use crate::ui::notifications::{filter_rows, rows as notification_rows};
 use crate::ui::profile::display_name;
 use crate::ui::theme;
 use crate::ui::thread::rows as thread_rows;
-use crate::ui::{connections, profile};
+use crate::ui::{connections, profile, settings};
 
 pub fn tab_label(tab: LogTab) -> &'static str {
     match tab {
@@ -99,25 +99,42 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         Screen::Thread(id) => draw_thread(app, frame, inner, &id),
         Screen::Profile(name) => draw_profile(app, frame, inner, &name),
         Screen::Connections(name, tab) => draw_connections(app, frame, inner, &name, tab),
-        other => frame.render_widget(
-            Paragraph::new(format!(" {} (not implemented yet)", screen_name(&other))),
-            inner,
-        ),
+        Screen::Settings => draw_settings(app, frame, inner),
     }
 }
 
 fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
     let screen_rows: Vec<Rect> = inner.rows().collect();
+    let labels = [LogTab::Following, LogTab::Latest, LogTab::Trending].map(tab_label);
+    let active = [LogTab::Following, LogTab::Latest, LogTab::Trending]
+        .iter()
+        .position(|t| *t == selected)
+        .unwrap_or(0);
+    draw_three_tabs(frame, inner, labels, active);
+
+    let list = Rect {
+        y: inner.y + 2,
+        height: inner.height.saturating_sub(2),
+        ..inner
+    };
+    draw_list(app, frame, list, FeedKey::Log(selected));
+
+    if matches!(app.session(), Session::Guest)
+        && let Some(row) = screen_rows.get(3)
+    {
+        frame.render_widget(Paragraph::new(" sign in to see the log  [L] Sign in"), *row);
+    }
+}
+
+/// Labels centered in thirds of the first row, with a line under the active one.
+fn draw_three_tabs(frame: &mut Frame, inner: Rect, labels: [&str; 3], active: usize) {
+    let screen_rows: Vec<Rect> = inner.rows().collect();
     let Some(tab_row) = screen_rows.first() else {
         return;
     };
     let cells = thirds(*tab_row);
-    for (cell, tab) in cells
-        .iter()
-        .zip([LogTab::Following, LogTab::Latest, LogTab::Trending])
-    {
-        let is_selected = tab == selected;
-        let label = tab_label(tab);
+    for (i, (cell, label)) in cells.iter().zip(labels).enumerate() {
+        let is_selected = i == active;
         let label_width = Span::raw(label).width();
         let style = if is_selected {
             theme::current_style().add_modifier(Modifier::BOLD)
@@ -143,18 +160,24 @@ fn render_log(app: &App, frame: &mut Frame, inner: Rect, selected: LogTab) {
             );
         }
     }
+}
 
-    let list = Rect {
-        y: tab_row.y + 2,
-        height: inner.height.saturating_sub(2),
+/// The tab row, its underline and a blank row stay put; the settings below them do not scroll.
+fn draw_settings(app: &App, frame: &mut Frame, inner: Rect) {
+    let labels = ["Profile", "Appearance", "Safety"];
+    let active = match app.settings().tab {
+        SettingsTab::Profile => 0,
+        SettingsTab::Appearance => 1,
+        SettingsTab::Safety => 2,
+    };
+    draw_three_tabs(frame, inner, labels, active);
+    let body = Rect {
+        y: inner.y + 3,
+        height: inner.height.saturating_sub(3),
         ..inner
     };
-    draw_list(app, frame, list, FeedKey::Log(selected));
-
-    if matches!(app.session(), Session::Guest)
-        && let Some(row) = screen_rows.get(3)
-    {
-        frame.render_widget(Paragraph::new(" sign in to see the log  [L] Sign in"), *row);
+    for (row, line) in body.rows().zip(settings::rows(app, body.width)) {
+        frame.render_widget(Paragraph::new(line), row);
     }
 }
 
