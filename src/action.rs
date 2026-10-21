@@ -1,0 +1,637 @@
+use time::OffsetDateTime;
+
+use crate::api::client::RateLimit;
+use crate::api::keys::KeyError;
+use crate::api::pkce::Pkce;
+use crate::app::{ConnTab, LogTab, ProfileTab, Screen, SettingsTab, ToastKind};
+use crate::drafts::Drafts;
+use crate::feed::{FeedKey, FeedPage, ReqId};
+use crate::model::{BlockResponse, LaneSetting, MuteResponse};
+use crate::model::{
+    Commit, GroupPage, MeResponse, NotificationsPage, Page, PastelResponse, ReportReason,
+    ThreadItem, ThreadResponse, User, UserResponse,
+};
+use crate::notifications::Filter;
+
+/// A value that `Debug` never prints, so that logs and panic messages cannot leak it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl Secret {
+    /// The hidden text, for the one place that sends it.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for Secret {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for Secret {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(..)")
+    }
+}
+
+/// Why a request failed, as the executor reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failure {
+    /// An API error code, or `http_<status>`, `network`, `decode`, `sign` and so on.
+    pub code: String,
+    /// Seconds from `Retry-After`, when the server sent it.
+    pub retry_after: Option<u64>,
+    /// The API `message` of an HTTP error, as the server wrote it; not yet cleaned for display.
+    pub message: Option<String>,
+}
+
+impl Failure {
+    /// A failure that carries no `Retry-After`.
+    pub fn new(code: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            retry_after: None,
+            message: None,
+        }
+    }
+}
+
+/// The write to your own settings that an answer belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MeWrite {
+    Sync,
+    Lane,
+    PasteisMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Quit,
+    /// Sent once at startup so that the first screen requests its data.
+    Init,
+    Tick(OffsetDateTime),
+    Resize(u16, u16),
+    /// Pushes onto the history so that Esc can return.
+    Open(Screen),
+    /// Replaces the screen and clears the history (g keys, Nav).
+    Goto(Screen),
+    Back,
+    StartGPrefix,
+    CancelGPrefix,
+    FocusNext,
+    FocusPrev,
+    NavStep(i8),
+    NavEnter,
+    SwitchTab(LogTab),
+    OpenHelp,
+    OpenSignIn,
+    CloseModal,
+    Commit,
+    /// `r`: opens the reply box under the selected card.
+    Reply,
+    /// `q`: opens the quote dialog for the selected card.
+    Quote,
+    FeedLoaded {
+        key: FeedKey,
+        req: ReqId,
+        page: FeedPage,
+    },
+    FeedFailed {
+        key: FeedKey,
+        req: ReqId,
+        failure: Failure,
+    },
+    NewCommits {
+        key: FeedKey,
+        since: String,
+        count: u32,
+    },
+    MoveSelection(i32),
+    SelectFirst,
+    SelectLast,
+    OpenSelected,
+    ToggleReplies,
+    Refresh,
+    ThreadLoaded {
+        id: String,
+        req: ReqId,
+        response: Box<ThreadResponse>,
+    },
+    ThreadFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `parent == thread` for the first level of replies.
+    RepliesLoaded {
+        thread: String,
+        parent: String,
+        req: ReqId,
+        page: Page<ThreadItem>,
+    },
+    RepliesFailed {
+        thread: String,
+        parent: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    UserLoaded {
+        username: String,
+        req: ReqId,
+        response: Box<UserResponse>,
+    },
+    /// `blocked_user` is the `user` field of a `user_blocked` error.
+    UserFailed {
+        username: String,
+        req: ReqId,
+        failure: Failure,
+        blocked_user: Option<Box<User>>,
+    },
+    ProfileFeedLoaded {
+        username: String,
+        tab: ProfileTab,
+        req: ReqId,
+        page: FeedPage,
+    },
+    ProfileFeedFailed {
+        username: String,
+        tab: ProfileTab,
+        req: ReqId,
+        failure: Failure,
+    },
+    ConnectionsLoaded {
+        username: String,
+        tab: ConnTab,
+        req: ReqId,
+        page: Page<User>,
+    },
+    ConnectionsFailed {
+        username: String,
+        tab: ConnTab,
+        req: ReqId,
+        failure: Failure,
+    },
+    MeLoaded {
+        req: ReqId,
+        response: Box<MeResponse>,
+    },
+    MeFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    NotificationsLoaded {
+        req: ReqId,
+        page: Box<NotificationsPage>,
+    },
+    NotificationsFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `id` is the id of the notification that was asked, not a `group_id`.
+    GroupLoaded {
+        id: String,
+        req: ReqId,
+        page: GroupPage,
+    },
+    GroupFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `1`..`6` on Notifications.
+    ToggleFilter(Filter),
+    /// `a` on Notifications.
+    ToggleAllFilters,
+    /// `@`: opens the profile of the selected card's author.
+    OpenAuthor,
+    /// `3` / `4` on a profile; pushes onto the history.
+    OpenConnections(ConnTab),
+    /// `1` / `2` on a profile.
+    SwitchProfileTab(ProfileTab),
+    /// `1`..`3` on Settings.
+    SwitchSettingsTab(SettingsTab),
+    MutedLoaded {
+        req: ReqId,
+        page: Page<User>,
+    },
+    MutedFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    BlockedLoaded {
+        req: ReqId,
+        page: Page<User>,
+    },
+    BlockedFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `1` / `2` on Followers / Following; replaces the screen without a history entry.
+    SwitchConnTab(ConnTab),
+    /// Sent by the executor after each response. `rate: None` keeps the previous value.
+    ApiStatus {
+        rate: Option<RateLimit>,
+        online: bool,
+    },
+    /// The newest commit id the last session saw on a tab; main sends it once at startup.
+    SetLastVisit {
+        tab: LogTab,
+        id: String,
+    },
+    /// A key typed while a composer has the focus.
+    Compose(crate::keymap::ComposerKey),
+    /// A bracketed paste. Only the sign-in dialog takes it; elsewhere it is dropped.
+    Paste(String),
+    /// A character typed into the Code field of the sign-in dialog.
+    SignInInput(char),
+    SignInBackspace,
+    /// `Ctrl+U` in the dialog: empties the Code field.
+    SignInClear,
+    /// `Enter` in the dialog; what it does depends on the step.
+    SignInSubmit,
+    /// `Ctrl+R` in the dialog: reads the key again and makes a new approval URL.
+    SignInRefresh,
+    /// `Ctrl+O` in the dialog.
+    SignInOpenBrowser,
+    /// `Ctrl+Y` in the dialog.
+    SignInCopyUrl,
+    /// The executor read or created the key and built the approval URL.
+    SignInPrepared {
+        fingerprint: String,
+        url: String,
+        pkce: Pkce,
+        state: String,
+        /// Whether this call made the key file.
+        created: bool,
+    },
+    /// The key could not be read or created.
+    SignInKeyFailed {
+        error: KeyError,
+    },
+    /// `prepare(false)` found no key file, so the dialog goes back to offering to create one.
+    SignInKeyMissing,
+    /// The approval URL could not be built, so the dialog can only offer to try again.
+    SignInPrepareFailed {
+        failure: Failure,
+    },
+    /// Registering the device failed: the server refused the code, or the request did not get through.
+    SignInFailed {
+        failure: Failure,
+    },
+    DeviceRegistered {
+        response: Box<MeResponse>,
+    },
+    /// A message from the executor for the toast, such as a browser that would not start.
+    Notice {
+        kind: ToastKind,
+        text: String,
+    },
+    /// The server created the commit that `Effect::CreateCommit` sent; applied whatever the age of `req`, since
+    /// the commit exists either way.
+    CommitCreated {
+        req: ReqId,
+        commit: Box<Commit>,
+    },
+    CommitFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `s`: stars or unstars the selected card.
+    ToggleStar,
+    /// `b`: saves or unsaves the selected card.
+    ToggleSave,
+    /// `p`: gives a pastel to the selected card.
+    GivePastel,
+    /// `y`: copies the link of the selected card.
+    CopyLink,
+    /// `O`: opens the selected card, or the profile owner when a profile has no card, in the browser.
+    OpenInBrowser,
+    /// The server starred (`on`) or unstarred the commit; `commit` carries the counts it holds now.
+    StarDone {
+        id: String,
+        req: ReqId,
+        commit: Box<Commit>,
+    },
+    StarFailed {
+        id: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server saved (`on`) or unsaved the commit.
+    BookmarkDone {
+        id: String,
+        req: ReqId,
+        commit: Box<Commit>,
+    },
+    BookmarkFailed {
+        id: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    PastelDone {
+        id: String,
+        req: ReqId,
+        response: Box<PastelResponse>,
+    },
+    PastelFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `.`: opens the more menu of the selected card.
+    OpenMenu,
+    /// A key typed in the more menu.
+    MenuKey(crate::keymap::MenuKey),
+    /// `d`: asks whether to delete the selected card.
+    Delete,
+    /// `y` in the confirmation: deletes the card.
+    ConfirmDelete,
+    /// `!`: opens the report dialog for the selected card.
+    Report,
+    /// A key typed in the report dialog.
+    ReportKey(crate::keymap::ReportKey),
+    /// The server deleted the commit.
+    DeleteDone {
+        id: String,
+        req: ReqId,
+    },
+    DeleteFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server took the report.
+    ReportDone {
+        id: String,
+        req: ReqId,
+    },
+    ReportFailed {
+        id: String,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `f`: follows or unfollows the profile owner, or the person on the selected row of Followers / Following.
+    ToggleFollow,
+    /// `m`: mutes or unmutes the profile owner.
+    ToggleMute,
+    /// `B`: asks whether to block the profile owner, or unblocks them when the profile shows a block.
+    Block,
+    /// `y` in the block confirmation: blocks the person.
+    ConfirmBlock,
+    /// The server took the follow (`on`) or the unfollow; it answers with no body.
+    FollowDone {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    FollowFailed {
+        username: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server muted (`on`) or unmuted; only `is_muting` of the response is used.
+    MuteDone {
+        username: String,
+        on: bool,
+        req: ReqId,
+        response: Box<MuteResponse>,
+    },
+    MuteFailed {
+        username: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server blocked (`on`) or unblocked; only `is_blocking` of the response is used.
+    BlockDone {
+        username: String,
+        on: bool,
+        req: ReqId,
+        response: Box<BlockResponse>,
+    },
+    BlockFailed {
+        username: String,
+        on: bool,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// `Left` / `Right` / `h` / `l` on Settings: moves the value of the focused row by a step.
+    SettingsStep(i8),
+    /// `Space` on Settings: flips the value of the focused row.
+    SettingsToggle,
+    /// `S` on the Profile tab: syncs the profile from GitHub.
+    SyncGithub,
+    /// `D` on the Profile tab: asks for the username before the account is deleted.
+    OpenAccountDelete,
+    /// `u` on the Safety tab: unmutes or unblocks the selected person.
+    ReleaseSelected,
+    /// A key typed into the hex field or into the username field of the deletion.
+    SettingsText(crate::keymap::SettingsText),
+    /// The server took the write and answered with the account as it is now.
+    MeWriteDone {
+        kind: MeWrite,
+        req: ReqId,
+        response: Box<MeResponse>,
+    },
+    MeWriteFailed {
+        kind: MeWrite,
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The server deleted the account; it answers with no body.
+    AccountDeleted {
+        req: ReqId,
+    },
+    AccountDeleteFailed {
+        req: ReqId,
+        failure: Failure,
+    },
+    /// The write of the drafts failed, so they are still unsaved.
+    DraftsSaveFailed,
+    /// The drafts of `account` read from disk; they fill only the slots that hold no text yet.
+    DraftsLoaded {
+        account: String,
+        drafts: Drafts,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Effect {
+    Quit,
+    /// Makes later requests unsigned. The runtime applies it before it spawns the effects after it.
+    UseGuestClient,
+    /// Makes later requests signed with the device key. Applied in order like `UseGuestClient`.
+    UseSignedClient,
+    FetchLog {
+        tab: LogTab,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchSaved {
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    PollLog {
+        tab: LogTab,
+        since: String,
+    },
+    FetchThread {
+        id: String,
+        req: ReqId,
+    },
+    /// `parent == thread` asks for the first level of replies.
+    FetchReplies {
+        thread: String,
+        parent: String,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchUser {
+        username: String,
+        req: ReqId,
+    },
+    FetchUserCommits {
+        username: String,
+        replies: bool,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchConnections {
+        username: String,
+        tab: ConnTab,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchMe {
+        req: ReqId,
+    },
+    FetchMuted {
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    FetchBlocked {
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    /// Marks every notification read on the server, so it must only follow an explicit user step.
+    /// `types` is `all`, `none` or a comma list.
+    FetchNotifications {
+        types: String,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    /// `id` is the id of one notification in the group; this call does not mark anything read.
+    FetchNotificationGroup {
+        id: String,
+        types: String,
+        cursor: Option<String>,
+        req: ReqId,
+    },
+    /// Reads the device key, or makes it when `create` is set, then builds the approval URL.
+    PrepareSignIn {
+        create: bool,
+    },
+    /// Starts the browser; only ever follows an explicit key press.
+    OpenUrl(String),
+    /// Writes the text to the terminal clipboard (OSC 52).
+    CopyToClipboard(String),
+    /// Redeems the approval code.
+    RegisterDevice {
+        code: String,
+        verifier: Secret,
+    },
+    /// Posts a commit; `parent_id` and `quoted_commit_id` are never both set.
+    CreateCommit {
+        body: String,
+        parent_id: Option<String>,
+        quoted_commit_id: Option<String>,
+        req: ReqId,
+    },
+    /// Stars (`on`) or unstars the commit.
+    StarCommit {
+        id: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Saves (`on`) or unsaves the commit.
+    BookmarkCommit {
+        id: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Spends one of the daily pastéis on the commit.
+    GivePastel {
+        id: String,
+        req: ReqId,
+    },
+    /// Copies a link from the server to the clipboard once the runtime has checked its origin.
+    CopyLink(String),
+    /// Deletes the commit.
+    DeleteCommit {
+        id: String,
+        req: ReqId,
+    },
+    /// Reports the commit; `details` is already trimmed and `None` when empty.
+    ReportCommit {
+        id: String,
+        reason: ReportReason,
+        details: Option<String>,
+        req: ReqId,
+    },
+    /// Follows (`on`) or unfollows the user.
+    FollowUser {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Mutes (`on`) or unmutes the user.
+    MuteUser {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Blocks (`on`) or unblocks the user.
+    BlockUser {
+        username: String,
+        on: bool,
+        req: ReqId,
+    },
+    /// Re-syncs the profile from GitHub.
+    SyncGithub {
+        req: ReqId,
+    },
+    SetLane {
+        lane: LaneSetting,
+        req: ReqId,
+    },
+    SetPasteisMode {
+        enabled: bool,
+        req: ReqId,
+    },
+    /// Deletes the account and every device; it cannot be undone.
+    DeleteAccount {
+        req: ReqId,
+    },
+    /// Writes the drafts of `account` to disk. The runtime does it on the spot, not on a task.
+    SaveDrafts {
+        account: String,
+        drafts: Drafts,
+    },
+    /// Reads the drafts of `account`. The runtime does it on the spot and answers with `Action::DraftsLoaded`.
+    LoadDrafts {
+        account: String,
+    },
+    /// Writes the Appearance settings to `config.toml`. The runtime does it on the spot, not on a task.
+    SaveConfig(crate::app::Prefs),
+}

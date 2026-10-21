@@ -1,0 +1,20 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" o Alice @alice - 3m                                           a1b2c3d"
+" | Hello ASCII world                                                  "
+" | o Yes                                                              "
+" | o No                                                               "
+" | 3d left                                                            "
+" | + " Bob @bob - 2h ------------------------------------------------+"
+" | | Original thought                                                |"
+" | +-----------------------------------------------------------------+"
+" | * 12  p 3  " Quote  < Reply  v 2 replies                      [ ] !"
+" | +-o Bob @bob - 1m                                                  "
+" | |     First reply                                                  "
+" | `- x [deleted] This commit was deleted.                            "
+"                                                                      "
+"                                                                      "
+"                                                                      "
+"                                                                      "

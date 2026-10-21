@@ -1,0 +1,10 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m                                           a1b2c3d"
+" │ See this:                                                          "
+" │ ┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐"
+" │ ╎ [deleted] This commit was deleted.                              ╎"
+" │ └╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘"
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"

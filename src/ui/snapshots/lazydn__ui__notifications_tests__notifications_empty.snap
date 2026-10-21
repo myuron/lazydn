@@ -1,0 +1,28 @@
+---
+source: src/ui/notifications_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ Notifications ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃ [x] Replies  [x] Quotes  [x] Stars  [x] Mentions  [x] Follows    ┃│ ◉ myuron                     │"
+"│ for devs         │┃ [x] Moderation                          (1-6 toggle, a all/none) ┃│ ● @myuron                    │"
+"│                  │┃ $ cat /dev/notifications                                         ┃│                              │"
+"│ ◉ Log            │┃                                                                  ┃│ 42 commits                   │"
+"│▌◎ Notifications  │┃                                                                  ┃│ 10 following  12 followers   │"
+"│ ◯ Profile        │┃                                                                  ┃│ ◓ 7/10 pasteis left          │"
+"│ ⊡ Saved          │┃                                                                  ┃│                              │"
+"│ ⚙ Settings       │┃                                                                  ┃│ Rust / TUI enjoyer           │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│ [ c  Commit ]    │┃                                                                  ┃┌ Keys ────────────────────────┐"
+"│                  │┃                                                                  ┃│ j/k  move     ↵  open        │"
+"│                  │┃                                                                  ┃│ 1-6  filter   a  all         │"
+"│                  │┃                                                                  ┃│ ?    all keys                │"
+"│                  │┃                                                                  ┃│                              │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│ @myuron          │┃                                                                  ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Notifications  j/k move  ↵ open  1-6 filter  a all  Tab pane  ? help                             API -/-  ○ connecting "

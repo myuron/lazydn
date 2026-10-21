@@ -1,0 +1,13 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m                                           a1b2c3d"
+" │ Check these out:                                                   "
+" │ [image 1/2 1200x800] [image 2/2 640x480] A chart                   "
+" │ ┌ Example Site ───────────────────────────────────────────────────┐"
+" │ │ Example Title                                                   │"
+" │ │ An example description.                                         │"
+" │ └─────────────────────────────────────────────────────────────────┘"
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"
+"                                                                      "

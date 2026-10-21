@@ -1,0 +1,10 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m                                           a1b2c3d"
+" │ Hello world, this uses inline code here.                           "
+" │ ☆ 12  ◓ 3  ❝ Quote  ↩ Reply  ⌄ 2 replies                        ⊡ ⚑"
+"                                                                      "
+"                                                                      "
+"                                                                      "

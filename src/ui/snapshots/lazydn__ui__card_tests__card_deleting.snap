@@ -1,0 +1,7 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ┌────────────────────────┐                                           "
+" │ rm a1b2c3d → /dev/null │                                           "
+" └────────────────────────┘                                           "

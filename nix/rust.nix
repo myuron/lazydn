@@ -1,4 +1,8 @@
-{ makeRustPlatform, rust-bin }:
+{
+  lib,
+  makeRustPlatform,
+  rust-bin,
+}:
 let
   toolchain = rust-bin.stable.latest.default;
   rustPlatform = makeRustPlatform {
@@ -8,7 +12,12 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "lazydn";
-  version = "0.1.0";
+  version = (lib.importTOML ../Cargo.toml).package.version;
   src = ../.;
   cargoLock.lockFile = ../Cargo.lock;
+  meta = {
+    description = "A terminal UI client for dev-null.sh";
+    license = lib.licenses.mit;
+    mainProgram = "lazydn";
+  };
 }

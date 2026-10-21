@@ -1,0 +1,18 @@
+---
+source: src/ui/card_tests.rs
+expression: terminal.backend()
+---
+" ◉ Alice @alice · 3m             a1b2c3d"
+" │ The quick brown fox jumps over the   "
+" │ lazy dog and keeps running through   "
+" │ the forest.                          "
+" │ ┌ rust ─────────────────────────────┐"
+" │ │ let very_long_identifier_name = … │"
+" │ │ ok();                             │"
+" │ └───────────────────────────────────┘"
+" │ ☆ 12  ❝ Quote  ↩ Reply  ⌄ 2 replies  "
+" │                                   ⊡ ⚑"
+"                                        "
+"                                        "
+"                                        "
+"                                        "

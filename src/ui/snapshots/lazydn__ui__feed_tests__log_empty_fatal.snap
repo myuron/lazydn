@@ -1,0 +1,28 @@
+---
+source: src/ui/feed_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ Log ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃      Following               Latest               Trending       ┃│ ◉ myuron                     │"
+"│ for devs         │┃      ━━━━━━━━━                                                   ┃│ ● @myuron                    │"
+"│                  │┃ ┆                                                                ┃│                              │"
+"│▌◉ Log            │┃ ◌  What did you ship?                                            ┃│ 42 commits                   │"
+"│ ◎ Notifications  │┃ ┆                                    [c] Write a commit          ┃│ 10 following  12 followers   │"
+"│                12│┃ ┆                                                                ┃│ ◓ 7/10 pasteis left          │"
+"│ ◯ Profile        │┃ fatal: your log does not have any commits yet                    ┃│                              │"
+"│ ⊡ Saved          │┃                                                                  ┃│ Rust / TUI enjoyer           │"
+"│ ⚙ Settings       │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃┌ Keys ────────────────────────┐"
+"│ [ c  Commit ]    │┃                                                                  ┃│ j/k  move     ↵  open        │"
+"│                  │┃                                                                  ┃│ c    commit   r  reply       │"
+"│                  │┃                                                                  ┃│ s    star     o  replies     │"
+"│                  │┃                                                                  ┃│ ?    all keys                │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│ @myuron          │┃                                                                  ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Log > Following  j/k move  ↵ open  c commit  Tab pane  ? help                                    API -/-  ○ connecting "

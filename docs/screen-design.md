@@ -165,13 +165,78 @@ Web 版は、画面幅に応じて 3 カラム（xl）、2 カラム（lg）、1
 | --- | --- |
 | Nav | 上から順に、ロゴ（`/dev/null`、a social network for devs）、Log、Notifications（未読数。99 を超えたら `99+`）、Profile、Saved、Settings、`[ c  Commit ]` ボタン、最下部に `@自分` を並べます。現在の画面には `▌` を付けて、primary 色で表示します |
 | Main | 現在の画面です。枠のタイトルに画面名（`Log`、`← Commit` など）を表示します |
-| Aside | 自分のサマリー（名前、@handle と lane 色、commit 数、フォロー数とフォロワー数、bio、残りの pastel 数）と、よく使うキーのヒントを表示します。Web 版の Who to follow と Search は API がないので載せません |
-| ステータスライン | 左にパンくず（`Log > Following`）と、その画面のキーのヒントを、右に API の残り回数（`X-RateLimit-Remaining`）と接続状態を表示します |
+| Aside | 自分のサマリー（名前、@handle と lane 色、commit 数、フォロー数とフォロワー数、bio、残りの pastel 数）と、その画面のキーのヒント（Keys。[キーのヒント](#キーのヒント) を参照）を表示します。Web 版の Who to follow と Search は API がないので載せません |
+| ステータスライン | 左にパンくず（`Log > Following`）と、その画面のキーのヒント（[キーのヒント](#キーのヒント) を参照）を、右に API の残り回数（`X-RateLimit-Remaining`）と接続状態を表示します |
 | トースト | ステータスラインの上に重ねて出し、3 秒で消えます（[モーダルとオーバーレイ](#モーダルとオーバーレイ) を参照） |
 
 - **フォーカス**: フォーカスのあるペインは太線の枠（`┏━┓`）で、ないペインは細線の枠（`┌─┐`）で描きます。モーダルは二重線（`╔═╗`）です。
 - **選択中の項目**: 左端に `▌` を付け、背景をわずかに明るくします。Web 版にはホバー時のハイライトや lane dimming がありますが、マウスを前提にしているので、選択中の項目で代わりに表現します。
 - **Tab** で Nav → Main → Aside の順にフォーカスを移します。Aside は表示しているだけなので、通常は Nav と Main を行き来するだけです。
+
+### キーのヒント
+
+ステータスラインの左と Aside の Keys は、同じ表から作ります。画面ごとに別のヒントを出し、選べるものがない画面（Settings など）では `j/k move  ↵ open` を出しません。決めるのは画面とダイアログだけで、読み込み中や空の状態では変えません。例外は、ブロック中のプロフィール（`You blocked @x. [B] Unblock` を出している状態）だけです。そこでは `f` と `m` が何もしないので、`B unblock` だけを出します。
+
+**どれを出すか**（上から順に当てはめます）
+
+1. サインインのダイアログ → 2. Composer（ダイアログでもインラインでも）→ 3. 確認、通報、メニュー、キー一覧のダイアログ → 4. Settings の hex の入力欄 → 5. 画面。ダイアログと入力欄では `?` が文字なので、`? help` は出しません。
+
+**ステータスライン**（`↵` は ASCII モードで `Enter`）
+
+| 場面 | ヒント（上から優先度が高い順） |
+| --- | --- |
+| Log | `j/k move` `↵ open` `c commit` `Tab pane` `? help` |
+| Saved | `j/k move` `↵ open` `b unsave` `Tab pane` `? help` |
+| Thread | `j/k move` `↵ open` `r reply` `Esc back` `Tab pane` `? help` |
+| Profile（他人） | `j/k move` `↵ open` `1-4 tab` `f follow` `Esc back` `Tab pane` `? help` |
+| Profile（自分） | `j/k move` `↵ open` `1-4 tab` `Esc back` `Tab pane` `? help` |
+| Profile（ブロック中） | `B unblock` `Esc back` `Tab pane` `? help` |
+| Followers / Following | `j/k move` `↵ open` `1-2 tab` `f follow` `Esc back` `Tab pane` `? help` |
+| Notifications | `j/k move` `↵ open` `1-6 filter` `a all` `Tab pane` `? help` |
+| Settings の Profile | `j/k row` `h/l choose` `S sync` `D delete` `1-3 tab` `Tab pane` `? help` |
+| Settings の Appearance（ゲストも同じ） | `j/k row` `h/l change` `1-3 tab` `Tab pane` `? help` |
+| Settings の Safety | `j/k move` `u release` `R reload` `1-3 tab` `Tab pane` `? help` |
+| Settings（ゲストの Profile と Safety） | `L sign in` `1-3 tab` `Tab pane` `? help` |
+| キー一覧 | `Esc close` `Q quit` |
+| サインイン | `↵ submit` `Esc close` `^O browser` `^Y copy` `^U clear` `^R refresh` |
+| Composer | `^S send` `↵ newline` `Esc close` |
+| 削除の確認 | `y delete` `n/Esc cancel` |
+| ブロックの確認 | `y block` `n/Esc cancel` |
+| アカウント削除の確認 | `↵ delete` `Esc close` |
+| 通報 | `j/k reason` `Tab details` `↵ send` `Esc close` |
+| その他のメニュー | `j/k move` `↵ run` `Esc close` |
+| lane の hex の入力欄 | `0-9a-f type` `↵ set` `Esc cancel` |
+
+- 書式は `{パンくず}  {キー} {説明}  {キー} {説明} …` で、項目の間は空白 2 つです。パンくずはダイアログを開いても画面のままです。
+- **Wide**（120 列以上）は全部を出します。**Medium**（80〜119 列）は `Tab pane` を外し、それでも右端（API の残り回数と接続状態、ホスト名）との間に空白が 2 列以上とれなければ、最後の項目（`? help` があればその手前）から順に外します。**Narrow**（80 列未満）はパンくずと説明を省き、キーだけを空白 1 つで並べます（`Tab` は出しません）。例: `j/k ↵ r Esc ?`。
+- ASCII モードでは `↵` を `Enter` に置き換えます。
+
+**Aside の Keys**（Wide で、サインインしているときだけ。ゲストの Aside は Keys の代わりにサインインの案内です）
+
+| 場面 | 並べる組（左上から行ごとに 2 組ずつ） |
+| --- | --- |
+| Log | `j/k move` `↵ open` `c commit` `r reply` `s star` `o replies` `? all keys` |
+| Saved | `j/k move` `↵ open` `b unsave` `r reply` `s star` `o replies` `? all keys` |
+| Thread | `j/k move` `↵ open` `r reply` `q quote` `s star` `o replies` `Esc back` `? all keys` |
+| Profile（他人） | `j/k move` `↵ open` `1-4 tab` `f follow` `m mute` `B block` `Esc back` `? all keys` |
+| Profile（自分） | `j/k move` `↵ open` `1-4 tab` `s star` `Esc back` `? all keys` |
+| Profile（ブロック中） | `B unblock` `Esc back` `? all keys` |
+| Followers / Following | `j/k move` `↵ open` `1-2 tab` `f follow` `Esc back` `? all keys` |
+| Notifications | `j/k move` `↵ open` `1-6 filter` `a all` `? all keys` |
+| Settings の Profile | `j/k row` `h/l choose` `S sync` `D delete` `1-3 tab` `? all keys` |
+| Settings の Appearance | `j/k row` `h/l change` `1-3 tab` `? all keys` |
+| Settings の Safety | `j/k move` `u release` `R reload` `1-3 tab` `? all keys` |
+| ダイアログと入力欄 | ステータスラインと同じ組（`? all keys` は付けない）。サインインはゲストだけなので Keys に出ない |
+
+- 内側の幅は 30 列です。1 行に 2 組を並べ、4 行までです。各行は先頭に空白 1 つ、左の組のキーは「左の列で一番長いキーの幅 + 2」に、説明は「2 組そろった行の左の説明で一番長いものの幅 + 3」にそろえ、右の組のキーは「右の列で一番長いキーの幅 + 2」にそろえます。最後の行に 1 組だけ残ったら、左の列に置きます。
+- 例（Log）:
+
+```text
+ j/k  move     ↵  open
+ c    commit   r  reply
+ s    star     o  replies
+ ?    all keys
+```
 
 ## commit カード
 
@@ -221,7 +286,7 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 | 文字列 | custom | その hex をそのまま使います |
 
 - truecolor に対応していない端末（`COLORTERM` が `truecolor` でも `24bit` でもない端末）では、最も近い 256 色に変換します。
-- ゲストとして公開 API を呼ぶと、`lane` が返りません。そのときは username のハッシュ値から 0〜5 を選びます。Web 版の Automatic と同じ値にはなりませんが、同じユーザーにはいつも同じ色が付きます。
+- ゲストとして公開 API を呼ぶと、`lane` が返りません。そのときは、サーバーの `User::automaticLane()` と同じ計算（ユーザーの `id` の各文字について `h = (h * 31 + 文字コード) mod 2^32` とし、`h % 6` を取る）で 0〜5 を選びます。Web 版の Automatic と同じ色になります。
 
 ### ヘッダー
 
@@ -257,7 +322,24 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 | `⚑` | `!` | 通報 | `!` |
 
 - Web 版の pastel のアイコンは 🥧 ですが、ここでは `◓` を使います。絵文字は端末によって表示幅が 1 列にも 2 列にもなり、罫線がずれる原因になるからです。
-- 罫線と記号を表示できない端末のために、設定（Appearance）で ASCII モードに切り替えられるようにします。
+- 罫線と記号を表示できない端末のために、設定（Appearance）で ASCII モードに切り替えられるようにします。置き換える範囲は [ASCII モード](#ascii-モード) にまとめます。
+
+### ASCII モード
+
+Appearance の ASCII モードをオンにすると、次の範囲の記号を ASCII に置き換えます。幅が変わらないように、1 列の記号は 1 列の文字に置き換えます（例外は、lazydn 自身が付ける切り詰めの `…` が 3 列の `...` になることと、カードの `⊡ ⚑` だけは上の表のとおり `[ ] !` と広がり、右寄せのまま左の余白で吸収します）。
+
+| 対象 | 記号 → ASCII |
+| --- | --- |
+| 一覧の縁（Log、Saved、Profile、Thread、Followers / Following） | `╎` → `:`、`┆` → `:`、`┊` → `:`、`╌` → `.`、`│` → `|`、`─` → `-` |
+| 一覧の印 | `◉` → `o`、`•` → `*`、`◌` → `o`、`○` → `o`、`·` → `-`、`↑` → `^`、`…` → `...`、`—` → `-`、`⚲ Pinned` の `⚲` → `#`、`├─` → `+-`、`└─`（枝）→ `` `- `` |
+| 選択中の印 | `▌` → `>` |
+| Notifications | `◉` → `*`、`○` → `o`、`★` → `*`、`↩` → `<`、`❝` → `"`、`✓` → `v`、`✗` → `x`、`⌄` → `v`、`⌃` → `^`、抜粋の枠 `┌┐└┘│─` → `+ + + + | -` |
+| ヒント | `↵` → `Enter`（ステータスラインと Keys） |
+
+- **切り詰めの例外**: `…` は `...`（3 列）になるので、ASCII モードで一覧の行を切り詰めるときは、先に 3 列を空けてから切って `...` を付けます（行が右の枠や時刻の列に食い込みません）。通知の要約、抜粋の枠の中、本文の 2 行目が対象です。
+- `◉` は、一覧（Log など）では `o`、Notifications では未読の印として `*` にします（Notifications の既読の `○` は `o` なので、`*` と `o` で未読を分けます）。
+- 対象外です（次のマイルストーンで扱います）: Nav のアイコン、Aside のサマリー、ペインの枠（`┏━┓` `┌─┐`）、タブの下線（`━`）、ダイアログの枠（`╔═╗`）、Settings の `●` `▌` `━` `(•)`、Profile のヘッダーの記号（`◉` `●` `⌂` `⚲` `⛓` `◓`）、ステータスラインの右端の `○` `●`、トースト。
+- **ユーザーが書いた文字は置き換えません。** commit の本文、コード、通知の抜粋、名前、bio、リンクカードは、そのまま出します。置き換えるのは、lazydn が描く飾りだけです（上の表。記号は描く場所で選び、描いたあとの行を一括で書き換えることはしません）。lazydn 自身が付ける切り詰めの `…` も、表のとおり `...` にします。
 
 ### 返信プレビュー
 
@@ -275,7 +357,7 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 
 | 要素 | 内容 |
 | --- | --- |
-| タブ | `Following │ Latest │ Trending`。`1`〜`3` で切り替えます。選んだタブには、下に `━` の線を引きます |
+| タブ | `Following`、`Latest`、`Trending` を画面の幅の 3 等分に中央寄せで並べます。`1`〜`3` で切り替え、選んだタブの下に `━` の線を引きます |
 | インライン composer | タブのすぐ下に置きます。`c` を押すと、フォーカスがここへ移ります。ゲストには表示しません |
 | 新着の通知 | 30 秒ごとに `since=<先頭の commit の id>` を付けて取得し、`new_commits_count` が 1 以上なら `↑ N new commits` を表示します。`R` を押すか、一覧の先頭で `k` を押すと読み込みます |
 | 一覧 | commit カードを並べます。最後から 5 件以内まで進んだら、`cursor` で次の 20 件を先に読み込みます |
@@ -341,7 +423,7 @@ Web 版のダークテーマの値に合わせます。ユーザーごとの lan
 
 ### Profile
 
-Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開きます。Web 版の `/@{user}` に当たります。
+Nav の Profile（`g p`）か、カードを選んで `@` を押すと開きます（`@` は、カードの作者のプロフィールを開くキーです）。Web 版の `/@{user}` に当たります。
 
 ```text
 ┏ Alice · 187 commits ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -350,6 +432,7 @@ Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開
 ┃ ● @alice  [Follows you]                                          ┃
 ┃                                                                  ┃
 ┃ Building terminal things. Rust, Nix, coffee.                     ┃
+┃                                                                  ┃
 ┃ ⌂ @laravel   ⚲ Portugal   ⛓ alice.dev   Joined Oct 2026          ┃
 ┃                                                                  ┃
 ┃ 187 commits   87 following   3647 followers   ◓ 42 received      ┃
@@ -373,11 +456,17 @@ Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開
 | ヘッダー | 名前、lane 色の `●`、`@handle`、`[Follows you]` / `[Muted]` のバッジを表示します |
 | 操作 | 他人のプロフィールでは、`f` でフォロー、`m` でミュート、`B` でブロックします。自分のプロフィールには、`O` で GitHub を開く操作だけを出します |
 | bio と meta | company、location、website、`Joined Month Year` を表示します |
-| 統計 | commits、following、followers、受け取った pastel の数を表示します。following と followers で `Enter` を押すと、[Followers / Following](#followers--following) を開きます |
-| タブ | `Commits │ Replies`。Replies は `?replies=true` で取得します |
+| 統計 | commits、following、followers、受け取った pastel の数を表示します。`3` で Followers、`4` で Following の [Followers / Following](#followers--following) を開きます |
+| タブ | `Commits` と `Replies` を画面の左右に半分ずつ中央寄せで並べ、選んだタブの下に `━` の線を引きます。`1` / `2` で切り替えます。Replies は `?replies=true` で取得します |
 | 一覧 | 先頭に、ピン留めした commit を `⚲ Pinned` の見出し付きで表示します |
 
 - Web 版にあるアクティビティグラフ、streak、実績、レベル表示は、API がないので載せません。
+- `f` は楽観的に切り替えます。ヘッダーの文言、followers の数、自分の following の数（Aside と自分のプロフィール）を先に変え、サーバーが拒んだら元に戻します。`is_following` が無いプロフィールは「フォローしていない」として扱います。応答は本文がない（204）ので、何も差し替えません。
+- `m` も楽観的に切り替え（`[Muted]` のバッジと `[m] Unmute`）、応答の `is_muting` だけを使います。ミュートしても、一覧の commit はその場では消さず、次の読み込みで反映します。
+- `B` は確認のダイアログ（`Block @x?` / `They won't be able to follow you or see your commits.` / `[y] Block  [n] Cancel`）を出します。成功すると、プロフィールを下記のブロックの表示に切り替え、フォローを双方向とも外します（自分の following は、フォローしていたときに 1 減り、followers は、相手がフォローしていたときに 1 減ります）。Followers / Following の行の `[Following]` も外します。Log の各タブ（commit と suggestions）と Saved からは、その人の commit を除きます（選択は、除いた後も同じ commit に残るか、その位置に来た次の commit に移ります）。ほかの画面（他人の Profile、Thread、返信プレビュー、Notifications）は、次の読み込みで反映します。
+- ブロックした相手のプロフィールで `B` を押すと、確認なしでブロックを解除し、プロフィールを読み込み直します。解除してもフォローは戻りません。
+- 同じ相手への同じ種類の操作は、応答が返るまで受け付けません。ブロックが飛んでいる間は、その相手への `f` / `m` も受け付けません。ブロックを解除した後は、プロフィールの読み込み直しが終わるまで `B` を受け付けません。自分のプロフィール、読み込み中・利用できないプロフィール、ブロックした相手のプロフィールでは、`f` / `m` は何もしません。ゲストは `f` / `m` / `B` でサインインのダイアログが開きます。
+- mute / unmute / block / unblock が成功したら、Settings の Safety は次に開いたときに一覧を読み込み直します。
 - ブロックした相手のプロフィール（`403 user_blocked`）では、ヘッダーだけを表示し、本文の位置に `You blocked @x. [B] Unblock` と表示します。ブロックされているとき（`403 user_unavailable`）は、`fatal: @x is not available` と表示します。
 
 使う API: `GET /v1/users/{username}`、`GET /v1/users/{username}/commits`、`POST|DELETE /v1/users/{username}/follow|mute|block`
@@ -390,16 +479,15 @@ Nav の Profile（`g p`）か、カードの作者名で `Enter` を押すと開
 ┃            ━━━━━━━━━                                             ┃
 ┃                                                                  ┃
 ┃▌◉ Bob @bob  [Follows you]                            [Following] ┃
-┃   coffee-driven developer                                        ┃
+┃▌  coffee-driven developer                                        ┃
 ┃ ◉ Carol @carol                                        [ Follow ] ┃
 ┃   ssh enthusiast                                                 ┃
 ┃ ◉ Dave @dave  [Follows you]                           [ Follow ] ┃
-┃ ┊                                                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
-- `1` と `2` でタブを切り替えます。1 ページは 30 件です。
-- サインインしているときは、各行に `[Follows you]` と、フォロー状態のボタン（`[Following]` / `[ Follow ]`）を表示します。`f` でフォローを切り替え、`Enter` でその人のプロフィールを開きます。
+- `1` と `2` でタブを切り替えます。このタブの切り替えは履歴に積まず、画面を置き換えるので、`Esc` で Profile に戻ります。1 ページは 30 件です。
+- サインインしているときは、各行に `[Follows you]` と、フォロー状態のボタン（`[Following]` / `[ Follow ]`）を表示します。`f` で選んだ行の人のフォローを切り替え、`Enter` でその人のプロフィールを開きます。自分の行と、`is_followed` が無い行（ボタンを出さない行）では、`f` は何もしません（プロフィールでは `is_following` が無いと「フォローしていない」として扱うので、扱いが異なります）。同じ人のプロフィール、もう一方のタブの行、自分の following の数にも、すぐ反映します。
 
 使う API: `GET /v1/users/{username}/followers`、`GET /v1/users/{username}/following`
 
@@ -413,17 +501,17 @@ Nav の Notifications（`g n`）で開きます。Web 版の `/notifications` �
 ┃ [x] Moderation                          (1-6 toggle, a all/none) ┃
 ┃                      ↑ 2 new notifications                       ┃
 ┃ ╎ ── Today ───────────────────────────────────────────────────── ┃
-┃ ◉ ★  Bob, Carol and 3 others starred your commit         2m      ┃
+┃ ◉ ★  Bob and 4 others starred your commit                2m      ┃
 ┃ │    ┌──────────────────────────────────────────────┐            ┃
 ┃ │    │ shipped a terminal client for /dev/null ...  │            ┃
 ┃ │    └──────────────────────────────────────────────┘            ┃
 ┃ │    ⌄ 5 stars                                                   ┃
-┃ ◉ ↩  Dave replied                                        5m      ┃
+┃ ◉ ↩  Dave @dave replied to your commit                   5m      ┃
 ┃ │    sounds great, ship it                                       ┃
-┃ ◉ +  Erin and Frank followed you                         1h      ┃
+┃ ◉ +  Erin and 1 other followed you                       1h      ┃
 ┃ ╌╌ HEAD@{last visit} ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌ ┃
-┃ ○ ✓  Your commit was approved                            3h      ┃
-┃ ○ ✗  Your commit was rejected                            1d      ┃
+┃ ○ ✓  Your commit was approved.                           3h      ┃
+┃ ○ ✗  Your commit was rejected.                           1d      ┃
 ┃ │    reason: spam                                                ┃
 ┃ ┊                                                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
@@ -433,8 +521,8 @@ Nav の Notifications（`g n`）で開きます。Web 版の `/notifications` �
 | --- | --- |
 | フィルター | `1`〜`6` で、Replies / Quotes / Stars / Mentions / Follows / Moderation をそれぞれオン・オフします。`a` を押すと、全部オンと全部オフを切り替えます |
 | 新着の通知 | 30 秒ごとに `GET /v1/me` の `unread_notifications_count` を調べ、1 件以上あれば `↑ N new notifications` を表示します |
-| グループ行 | star と follow はまとめて、`Bob, Carol and 3 others starred your commit` のように 1 行で表示します。`o` で展開すると、個々の通知を表示します |
-| 新着の印 | 応答のトップレベルの `read_at` より前の通知を新着とみなし、ノードを `◉`（primary 色）で表示します。既読のものは `○` です |
+| グループ行 | `event_count` が 2 以上の通知は 1 行にまとめ、`o` で展開すると個々の通知を表示します。複数人の表記（`Bob and 4 others starred your commit`）は star と follow だけで、ほかの種類は `Dave @dave replied to your commit` のように最新の 1 人を出します |
+| 新着の印 | `read_at` が null か、応答のトップレベルの `read_at` 以上の通知を新着とみなし、ノードを `◉`（primary 色）で表示します。既読のものは `○` です |
 
 - **注意**: `GET /v1/notifications` を呼ぶと、すべての通知が既読になります。そのため、この画面を開いたときと、ユーザーが明示的に読み込んだとき（`R` または新着の通知）だけに呼びます。バッジの更新には `GET /v1/me` を使います。
 - **通知がないとき**: `$ cat /dev/notifications | grep -E 'replies|stars'` と表示します。Web 版と同じ文言です。
@@ -461,21 +549,21 @@ Nav の Saved（`g v`）で開きます。保存した commit を、保存した
 
 ### Settings
 
-Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance、Safety のタブを切り替えます。
+Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance、Safety のタブを切り替えます。タブは画面の幅を 3 等分して中央寄せで並べ、選んだタブの下に `━` の線を引きます。ラジオは項目単位で詰めて並べ、幅が足りないときは折り返します。
 
 ```text
 ┏ Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Profile │ Appearance │ Safety                                    ┃
-┃ ━━━━━━━                                                          ┃
+┃       Profile              Appearance              Safety        ┃
+┃       ━━━━━━━                                                    ┃
 ┃                                                                  ┃
-┃ Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃
+┃▌Profile mirrored from GitHub   (synced 2h ago)   [S] Sync        ┃
 ┃                                                                  ┃
 ┃ Lane color                                                       ┃
-┃  ( ) Auto   (•) ● orange  ( ) ● green   ( ) ● violet             ┃
-┃  ( ) ● teal ( ) ● rose    ( ) ● ochre   ( ) custom #______       ┃
+┃  ( ) Auto (green)  (•) ● orange  ( ) ● green  ( ) ● violet       ┃
+┃  ( ) ● teal  ( ) ● rose  ( ) ● ochre  ( ) custom #______         ┃
 ┃  preview:  ◉──●──●  myuron                                       ┃
 ┃                                                                  ┃
-┃ Pasteis mode                                        [x] on       ┃
+┃ Pasteis mode                                              [x] on ┃
 ┃  10 per day, resets 00:00 UTC                                    ┃
 ┃                                                                  ┃
 ┃ Danger zone                                                      ┃
@@ -486,36 +574,107 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 | タブ | 項目 | 保存先 |
 | --- | --- | --- |
 | Profile | GitHub からの再同期（`S`）、lane 色（Auto、6 色、custom の hex）、pastéis モード、アカウントの削除（`D`） | サーバー（`PUT /v1/me/github`、`PUT /v1/me/lane`、`PUT /v1/me/pasteis-mode`、`DELETE /v1/me`） |
-| Appearance | テーマ（ダーク・ライト）、Nav の折りたたみ、lane dimming、返信プレビューの件数（1・3・5・10・15・20・25）、ASCII モード | ローカルの設定ファイル（`~/.config/lazydn/config.toml`） |
+| Appearance | テーマ（ダーク・ライト）、Nav の折りたたみ、lane dimming、返信プレビューの件数（1・3・5・10・15・20・25）、ASCII モード | ローカルの設定ファイル（`~/.config/lazydn/config.toml`。変えるたびに書き直します） |
 | Safety | ミュート中・ブロック中のユーザーの一覧と、その解除 | サーバー（`GET /v1/me/muted`、`GET /v1/me/blocked`、`DELETE /v1/users/{username}/mute|block`） |
 
+**Profile タブの操作**（フォーカスは Main にあるとき）
+
+- `j` / `k`（`↓` / `↑`）で、Sync、Lane color、Pasteis mode、Delete account の 4 行を移ります。フォーカスのある行の先頭の列に `▌` を付けます（Sync は同期の行、Lane color は見出し、Delete account は `[D] Delete account` の行）。
+- `S` は、どの行からでも GitHub から再同期します（`PUT /v1/me/github`）。Sync の行では `Enter` も同じです。成功したら、アカウントを応答で差し替え（`Unread` の数は差し替えません）、`(synced just now)` と表示し、自分のプロフィールを開いていれば読み込み直します。
+- Lane color の行では、`←` / `→`（`h` / `l`）で、Auto、6 色、custom の順にカーソルを動かします。端で止まり、折り返しません。保存済みの選択は `(•)`、カーソルは選択肢の手前の `▌` で示し、別の行にフォーカスがあるときはカーソルを描きません。preview はカーソルのある選択肢の色で描きます。タブか画面を離れると、カーソルは保存済みの選択に戻ります。
+- `Enter` で、カーソルの選択肢を `PUT /v1/me/lane` で送ります。画面は楽観的に変えず、応答のアカウントで、保存済みの選択、preview、Aside の色を変えます。自分の commit の作者の lane も、持っているすべての写しで同じ色にします。送信中の `Enter` は何もしません。
+- custom で `Enter` を押すと、`#______` の欄に 6 桁の 16 進数を入力します。`0-9a-f` だけが入り（大文字は小文字にします）、7 桁目以降は入りません。`Backspace` で 1 桁戻し、6 桁そろった `Enter` で送ります。応答が返るまで欄は開いたままで、失敗したら欄を残してトーストを出します。`Esc` は欄を閉じるだけで、Settings から戻りません。
+- Pasteis mode の行では、`Enter` か `Space` でオン / オフを切り替えます（`PUT /v1/me/pasteis-mode`）。これも応答で変わり、カードのアクション行の `◓` も応答で出入りします。
+- 同じ種類の書き込み（同期、lane、pastéis モード）は、1 つずつしか飛ばしません。
+- 欄に文字を入力している間（hex の欄と、アカウントの削除の username の欄）は、`Esc` と `Enter` と `Backspace` と `Ctrl+C` 以外のキーをすべて入力として扱います。`1`〜`3` でタブは切り替わらず、`Q`、`c`、`g`、`D` も文字です。`Ctrl+C` だけが終了です。
+
+**Appearance タブの操作**（ゲストも使えます）
+
+- `j` / `k`（`↓` / `↑`）で、Theme、Collapse nav、Lane dimming、Reply previews、ASCII mode の 5 行を移ります。端で止まります。フォーカスのある行の先頭の列に `▌` を付けます。
+- `←` / `→`（`h` / `l`）、`Enter`、`Space` で、フォーカスのある行の値を変えます。値は押した瞬間に変わり（`prefs` に入り）、サーバーには何も送りません。
+  - Theme と、3 つのスイッチ（Collapse nav、Lane dimming、ASCII mode）は、どのキーでも切り替わります。
+  - Reply previews は 1・3・5・10・15・20・25 を順にたどります。`←` / `→` は端で止まり（変わらないときは保存しません）、`Enter` と `Space` は 1 つ進み、25 の次は 1 に戻ります。
+  - Nav にフォーカスがあるとき、狭い画面で `h` / `l` が Nav の操作になるときは、値を変えません。
+- **Theme、Collapse nav、Lane dimming は、保存はしますが、まだ表示には効きません。** その 3 行の値の右に `(not applied yet)` と出します（ゲストも同じ。幅が足りないときは値だけを残します）。Reply previews と ASCII mode は、すぐ表示に効きます。
+- 値が変わるたびに `Effect::SaveConfig(Prefs)` を 1 つ出します。ランタイムが `Runtime::apply` の中で、Store を通して同期的に `config.toml` へ書きます（`SaveDrafts` と同じで、順に直列で実行します）。保存するのは 5 つの値（`theme`、`collapse_nav`、`lane_dimming`、`reply_preview_limit`、`ascii`）で、`truecolor` は環境から決まるので書きません。
+- 書き方（`config::save_prefs`）:
+  1. 書く直前に `config.toml` を読み直します。ファイルが無ければ（`NotFound`）空のテーブルから始め、新しく作ります。ディレクトリは無いときだけ作り、作るディレクトリはすべて 0700 です（途中のものも含みます。既にあるディレクトリは変えません）。
+  2. `symlink_metadata` で `config.toml` が symlink なら、書きません（home-manager や stow が管理するファイルを、通常のファイルに置き換えてしまわないため）。`config.toml` を置くディレクトリそのものが symlink のときは、リンク先に書きます。
+  3. 読めない（`NotFound` 以外）、または TOML として読めないときは書きません。
+  4. 既存のテーブルの、5 つの既知のキーだけを上書きします。知らないキーと、その値は残ります。**コメントと書式は失われます。**
+  5. 一時ファイル（`.config.toml.tmp-<pid>-<連番>`、権限 0600）を `create_new` で作ります。連番は 0 から始め、その名前が既にあれば（symlink でも）次の番号に進むので、既存のファイルやリンク先は書き換えません。書いたら `sync_all` して `rename` します。失敗したら（`rename` の失敗も）一時ファイルを消します。
+  - 空の `config.toml` は空のテーブルとして扱います。UTF-8 でないファイルは「読めない」として扱います。
+  - 2 つのインスタンスが同時に書いたときは、あとに書いたほうが勝ちです（ロックはしません）。書いたあとの `config.toml` の権限は 0600 になります。
+- 書けなかったときの toast（Error）は次のとおりです。画面の値は変えたままで、次の変更でもう一度書きます。同じ文言が続くときは、重ねずに表示を延ばすだけです。
+  - TOML として読めない: `config.toml could not be parsed; settings not saved`
+  - 読めない: `config.toml could not be read; settings not saved`
+  - symlink: `config.toml is a symlink; settings not saved`
+  - ほかの入出力の失敗: `settings could not be saved (<理由>)`
+- 起動時の読み込み（`load_prefs`）は変わりません。
+
+**Safety タブの操作**
+
+- Muted と Blocked は、1 本の選択で上から順にたどります。`j` / `k`、`G`（末尾）、`g g`（先頭）で動き、見出しの行は選べません。画面より長いときは、選択に合わせてスクロールします（Muted と Blocked のそれぞれで、先頭の人を選ぶと、その見出しも見えるところまでスクロールします）。
+- `u`（または `Enter`）で、選んだ人のミュート（`DELETE /v1/users/{username}/mute`）かブロック（`DELETE /v1/users/{username}/block`）を解除します。一覧からは先に除き、失敗したら元の位置に戻して選択します。そのあいだに `R` で一覧が置き換わっていたら、読み込んだ結果を正とし、その人がいなければ末尾に戻します。
+- 空の一覧は、`No muted users.` / `No blocked users.` と表示します。
+- 取るのは、それぞれの 1 ページ目（20 件）だけです。21 件目以降は、表示も解除もできません。`┊ more not shown` と表示します。
+
+**ゲスト**
+
+- ゲストも Settings を開けます。Profile と Safety は、本文の代わりに `Sign in to change these settings. [L] Sign in` を表示し、`S`、`D`、`Enter`、`Space`、`u` はサインインのダイアログを開きます。Appearance はゲストでも使えます。セッションを確認している間（Restoring）は、Settings を開けず、書き込みも何もしません。
+
+**アカウントの削除**
+
+- `D`（Profile タブだけ。フォーカスは Main）か、Delete account の行の `Enter` で、幅 50 の確認ダイアログ `Delete account` を開きます。自分の username を、大文字と小文字まで完全に一致するよう入力したときだけ、`[Enter] Delete` が出て、`Enter` で `DELETE /v1/me` を送ります。空欄や不一致の `Enter` は何もせず、送信中の `Enter` も何もしません。`Esc` で閉じます。
+- 204 が返ったら、ゲストに戻し（ゲストのデータと同じ後始末）、サインインのダイアログは開かずに、`Account deleted`（Info）のトーストを出します。ダイアログを閉じた後に届いても、別の要求の `device_not_approved` で先にゲストに戻っていても、同じです（後の場合は、後始末を二重にせず、トーストを置き換え、開いたサインインのダイアログを閉じます）。サインインし直した後に届いた 204 は、何も変えません。
+- 失敗は `write_failure_text` のトーストです。タイムアウトと通信の失敗だけは、サーバーが消したか分からないので、`could not confirm the deletion — check dev-null.sh before trying again` と表示します。ダイアログは開いたままですが、入力欄は空に戻るので、もう一度送るには username を入れ直します。送信中に `Esc` で閉じても、削除の要求は取り消されません。送信中に開き直すと、`deleting…   [Esc] Close` の状態で開き、`Enter` は何もしません。
+- **ローカルのファイルは消しません。** 鍵（`id_ed25519`）、下書き（`drafts-<account id>.toml`）、`state.toml` は残ります。サーバー側で鍵が無効になるだけで、消すかどうかは利用者に任せます。
+
+**再同期の文言**
+
+- 429 `rate_limited` は、サーバーの message（`You just synced. Try again in a minute.`）を整えて表示します。message がなければ同じ文言を固定で出します。
+- 503 `github_sync_failed` は、サーバーの message（`Could not sync from GitHub. Try again in a minute.`）を同じように表示し、なければ同じ文言を固定で出します。ほかの失敗は、いつもの書き込みの失敗の文言です。
+
 - Web 版の Terminal タブ（curl による投稿の説明）と Devices タブ（デバイス一覧）は、載せません。Terminal タブはこのアプリ自体が代わりになり、デバイス一覧は API がないからです。
-- 再同期の上限（1 回/分）を超えたときは、`You just synced. Try again in a minute.` をトーストで表示します。
-- アカウントの削除では、確認のダイアログで自分の username を入力してもらいます。取り消せない操作だからです。
 
 ### サインイン
 
 起動したときに鍵が未登録なら、Log をゲストとして表示し、Nav に `[ L  Sign in ]` を出します。`L` を押すか、サインインが必要な操作をすると、次のダイアログを開きます。
 
 ```text
-╔ Sign in to /dev/null ════════════════════════════════════════╗
-║                                                              ║
-║ 1. Key            ~/.config/lazydn/id_ed25519   ✓ created    ║
-║ 2. Approve        open this URL in your browser:             ║
-║                   https://dev-null.sh/mobile/authorize?...   ║
-║                   [o] open browser   [y] copy URL            ║
-║ 3. Code           ________________________                   ║
-║                                                              ║
-║                   Enter submit    Esc continue as guest      ║
-╚══════════════════════════════════════════════════════════════╝
+╔ Sign in to /dev/null ═══════════════════════════════════════════╗
+║                                                                 ║
+║ 1. Key      ~/.config/lazydn/id_ed25519  ✓ ready                ║
+║             SHA256:KhVovNmj/HaIYLFS2Thqiu7ov5FlDlXpnntLqnfTL0I  ║
+║ 2. Approve  open this URL in your browser:                      ║
+║             https://dev-null.sh/mobile/authorize?fingerprint=SH ║
+║             A256%3A…&code_challenge=…&state=…&redirect_uri=…    ║
+║             Ctrl+O open browser   Ctrl+Y copy URL               ║
+║ 3. Code     ▏                                                   ║
+║             paste the devnull:// URL or the code                ║
+║                                                                 ║
+║             Enter submit    Esc continue as guest               ║
+╚═════════════════════════════════════════════════════════════════╝
 ```
 
-1. **Key**: `~/.config/lazydn/id_ed25519` がなければ作ります。
-2. **Approve**: PKCE の `code_challenge` を付けた承認ページの URL を表示します。`o` でブラウザを開き、`y` で URL をコピーします。
-3. **Code**: Web で受け取った `code` を貼り付けて Enter を押すと、`POST /v1/devices` を呼びます。成功すると、Log の Following を開き直します。
+1. **Key**: 鍵のパスは `<設定ディレクトリ>/id_ed25519` です。設定ディレクトリの既定は `$XDG_CONFIG_HOME/lazydn`（なければ `~/.config/lazydn`）で、環境変数 `LAZYDN_CONFIG_DIR` で変えられます。
+   - 鍵がまだなければ、ダイアログを開いただけでは作りません。`1. Key  <path>  press Enter to create` と表示し、Enter を押したときに作ります（作ったときは `✓ created`）。
+   - 鍵があれば、ダイアログを開いたときに読んで、承認の URL まで用意します。
+   - 鍵が使えないとき（他のユーザーが読める、暗号化されている、ed25519 でないなど）は、理由を表示します。`Enter` か `Ctrl+R` で鍵を読み直せます。鍵を作れなかったとき（書き込めないなど）も同じです。
+2. **Approve**: PKCE の `code_challenge` を付けた承認ページの URL を、幅に合わせて折り返して表示します。URL のホストは、接続先（`LAZYDN_BASE_URL`）と同じです。`Ctrl+O` でブラウザを開き、`Ctrl+Y` で URL をコピーします。
+   - `Ctrl+Y` は、OSC 52 のエスケープシーケンスを端末に書きます。端末が受け取ったかは確かめられないので、トーストは `i Copy sent to the terminal (OSC 52)` とします。tmux や screen の中では、OSC 52 をパススルーする設定が必要です。
+   - ブラウザを開くのは、`Ctrl+O` を押したときだけです。開く前に、URL が https（接続先がループバックのときは http）で、ホストが接続先と同じかを確かめます。
+   - `Ctrl+R` で、新しい URL（新しい PKCE と state）を作ります。
+3. **Code**: 承認が終わると、ブラウザは `devnull://lazydn/callback?code=…&state=…` に移動します。OS のスキームハンドラは登録しないので、この URL（または `code` だけ）を Code 欄に貼り付けて Enter を押すと、`POST /v1/devices` を呼びます。成功すると、ゲストのときに取ったデータを捨てて、Log の Following を開き直します。
+   - 貼り付けは、端末の bracketed paste で受け取ります。改行などの制御文字は除き、長さは 2048 文字までです。Code 欄に打ち込む文字も、2048 文字で止まります。ダイアログの外での貼り付けは無視します。
+   - URL の場合は、`state` が承認の URL のものと一致することを確かめます。一致しなければ `state mismatch — approve again`、`error=access_denied` なら `approval was cancelled`、`code` がなければ `no code in the URL — paste the whole devnull:// URL` と表示します。
+   - `code` は 64 文字の小文字の 16 進数です。そうでなければ送りません。前後の空白は除きます。空のときは何もしません。
 
-- `400 invalid_grant` が返ったときは、`code` を入力し直してもらいます。
-- 承認ページのリダイレクト先の仕様が分かれば、ローカルにサーバーを立てて `code` を自動で受け取る方式に変えます（[dev-null-api.md の「lazydn での使い方」](./dev-null-api.md#lazydn-での使い方) を参照）。
+- 文字の入力中は、`Esc` と `Ctrl+C` 以外の文字キーを Code 欄の入力として扱います。`Backspace`（長押しを含む）で 1 文字、`Ctrl+U` で全部を消します。
+- `Esc` でダイアログを閉じても、URL と入力中の Code は残ります。開き直しても、PKCE と state は作り直しません。
+- 送信中は `Signing in…` を出し、Enter を重ねて押しても送りません。
+- `400 invalid_grant` が返ったときは、`the code was not accepted — approve again and paste the new URL` と表示し、新しい URL を用意し直します。Code 欄の入力は残します。ほかの失敗では URL を変えずに、Enter でもう一度送れます。
+- OS のスキームハンドラ（`devnull://`）の登録は、将来の課題です。いまは貼り付けで受け取ります。
 
 **ゲストのとき**の Nav と Aside:
 
@@ -543,51 +702,91 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ```text
 ╔ Write a commit ══════════════════════════════════════════════╗
 ║                                                              ║
-║ ┆  hello /dev/null, this was written in lazydn.              ║
-║ ◌  `cargo install lazydn`                                    ║
+║ ◌  hello /dev/null, this was written in lazydn.              ║
+║ ┆  `cargo install lazydn`                                    ║
 ║ ┆  █                                                         ║
-║ ┆                                                            ║
 ║                                                              ║
 ║ stash@{0} draft saved          Esc cancel  Ctrl+Enter Commit ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
-- 本文は 1〜4000 文字です。残りが 200 文字以下になったら、右下に残り文字数を表示します。20 文字以下で黄、0 文字で赤にします。
+- 本文は 1〜4000 文字です。数え方はサーバーと同じで、前後の空白を除き、コードブロックの外で 3 行以上続く空行を 1 つに詰めたあとの、コードポイントの数です。残りが 200 文字以下になったら、右下に残り文字数を表示します。20 文字以下で黄、0 文字以下（超過のときは負の数）で赤にします。範囲外のときは、投稿のキーを押しても何もしません。
 
 ```text
 ╔ Write a commit ══════════════════════════════════════════════╗
+║                                                              ║
 ║ ┆  ... (long body)                                           ║
+║ ┆  ... (the last row of the body)                            ║
+║ ┆                                                            ║
 ║                                                           18 ║
 ║ stash@{0} draft saved          Esc cancel  Ctrl+Enter Commit ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
-- 下書きはインラインとモーダルで共有し、ローカルに保存します。下書きがある間は、`stash@{0} draft saved` と表示します。
-- `Ctrl+Enter` で投稿し、`Esc` で閉じます。閉じても下書きは残ります。投稿中は、ボタンを `Committing…` に変えます。
-- 投稿した commit は `status: "pending"` になります。そのため、一覧の先頭に `[in review]` のバッジ付きで差し込みます。
+- 下書きはインラインとモーダルで共有し、ローカルに保存します。`stash@{0} draft saved` は「下書きを持っている」ことを表します。ファイルへ書いた、という意味ではありません。ファイルへは、最後の編集から 2 秒後、`Esc` で閉じたとき、投稿に成功したとき、終了するときに書きます。
+  - ファイルは状態ディレクトリの `drafts-<アカウントの id>.toml` です（ファイルは 0600。ディレクトリは作るときだけ 0700 にし、既にあるディレクトリは変えません）。アカウントごとに分かれ、ほかのアカウントの下書きは見えません。アカウントの id が 16 進数とハイフンだけの形（UUID）でないときは、書きも読みもしません。
+  - 読み込むときは、制御文字と bidi 文字を除き、8000 文字で切ります。壊れたファイルは無視します。
+- `Ctrl+Enter` で投稿し、`Esc` で閉じます。閉じても下書きは残ります。投稿中は、キーの案内の `Commit` を `Committing…` に変え、文字の入力を受け付けません（`Esc` と `Ctrl+C` は使えます）。
+  - **`Ctrl+S` でも投稿します**: 多くの端末は `Ctrl+Enter` を `Enter` と区別できません（tmux、VTE 系、Windows の多くが当てはまります）。そのため、起動時に端末のキーボード拡張（kitty のキーボードプロトコル）を使えるかを調べます。使えるときだけ、キーの案内に `Ctrl+Enter` を出します。使えないときは `Ctrl+S` を出し、この場合の `Ctrl+Enter` は改行になります。使えるかどうかにかかわらず、`Ctrl+S` はいつでも投稿です。Web 版にはない差分です。
+  - 改行は `Enter`、`Shift+Enter`、`Alt+Enter`、`Ctrl+J` のどれでも入ります。`Tab` は空白 4 つです。
+  - 貼り付け（bracketed paste）は、改行を保って一度に入ります。`\r\n` と `\r` は `\n` にし、タブは空白 4 つにし、制御文字と bidi 文字は除きます。8000 文字を超える分は切り、`pasted text was cut at 8000 characters` とトーストで知らせます。
+- 画面が狭いときと低いときは、次のように縮めます。
+  - 本文の下の 2 行で幅が足りないときは、キーの案内を優先し、`stash@{0} draft saved` を `stash@{0}` に縮めます。それでも足りなければ出しません。エラーとカウンタの行では、カウンタを優先し、エラーは残りの幅で切ります。
+  - 本文の欄は最低 3 行ですが、画面の高さが足りなければ 1 行まで縮めます。インラインは、キーの案内の行まで一覧の中に収まるように、本文の欄を縮めます。ダイアログは画面の高さに収め、それでも入らなければ案内の行から省きます。
+- 投稿した commit は `status: "pending"` になります。そのため、一覧の先頭に `[in review]` のバッジ付きで差し込みます。差し込むのは、読み込み済みの Following と Latest だけです。選んでいる commit は動かしません（`selected` が 0 のときは番号が変わらないので、先頭に入った投稿が選ばれた状態になります）。置き換えの読み込みが保留中の一覧には差し込みません。読み込みの結果に含まれるためです。
+  - 投稿のあとに届く応答は、`Esc` で閉じていても、古い応答でも、サーバーでは commit ができているので、一覧とトーストには反映します。下書きを消すのは、その下書きが送った本文のままのときだけです。
+  - 失敗したときは、composer を開いたまま下書きを残し、本文の下の行とトーストに理由を出します。タイムアウトなどで応答が届かなかったときは、投稿されている可能性があるので、`network error — check your log before sending again (it may have been posted)` と出します。
+  - 自分の Profile の一覧と `commits` の数には反映しません。ポーリングの起点は一覧の先頭の commit なので、投稿したあとは、それより前に投稿された他人の commit が `↑ N new commits` に数えられないことがあります。
 - 画像、poll、予約投稿のボタンは載せません。署名付き API では付けられないからです。
 
 ### 返信と引用
 
-**返信**（`r`）は、カードのすぐ下にインラインで開きます。Web 版と同じです。
+**返信**（`r`）は、選んだカードのすぐ下に二重線の枠を開きます。Web 版と同じです。Log、Saved、プロフィールの一覧と、Thread の Main、祖先、返信が対象で、削除済みの commit（tombstone）と「Show more」の行では何もしません。
 
 ```text
-┌──────────────────────────────────────────────────────────────────┐
-│ ◉ Bob @bob · 1m                                          7d6c5b4 │
-│ │ nice! which crate for ssh sigs?                                │
-│ │ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                                 ⊡ ⚑ │
-│ │ ╔ Reply to @bob ═════════════════════════════════════════╗     │
-│ │ ║ ssh-key has SshSig█                                    ║     │
-│ │ ║                         Esc cancel  Ctrl+Enter Reply   ║     │
-│ │ ╚════════════════════════════════════════════════════════╝     │
-└──────────────────────────────────────────────────────────────────┘
+ │ ◉ Bob @bob · 1m                                          7d6c5b4
+ │ │ nice! which crate for ssh sigs?
+ │ │ ☆ 1  ◓ 0  ❝ Quote  ↩ stash@{0}                           ⊡ ⚑
+ │ │ ╔ Reply to @bob ═════════════════════════════════════════╗
+ │ │ ║ ssh-key has SshSig                                     ║
+ │ │ ║                           Esc cancel  Ctrl+Enter Reply ║
+ │ │ ╚════════════════════════════════════════════════════════╝
 ```
 
-**引用**（`q`）は、Composer のモーダルを `Quote @x` というタイトルで開き、本文の下に引用元のカードを表示します。
+- 枠の左端はカードの本文が始まる列、右端はカードの右端の列です。枠の左には、そのカードの縦線（Thread では枝の線）をそのまま続けます。選択の印の列は空けます。
+- 本文は 1〜8 行で、枠の幅から 4 を引いた幅で折り返します。最後の行の右に、キーの案内（`Ctrl+Enter Reply`。キーボード拡張が使えないときは `Ctrl+S Reply`）を出します。残りが 200 文字以下になったら、その左にカウンタを出し、失敗したときは左にエラー（`✗ …`）を出します。投稿中は案内が `Committing…` になります。
+- 枠が開いている間は、キーは枠に入ります。`j`/`k` でカードを動かすことはできません。`Esc` で閉じても下書きは残ります。下書きは返信先の commit ごとに持ち、あるカードの `↩ Reply` は、その下書きがあれば `↩ stash@{0}` に変わります。
+- 開いている Composer は、どの時点でも 1 つだけです。枠が開いている間はキーがすべて本文に入るので、別のカードに返信するには、`Esc` で枠を閉じてから、そのカードで `r` を押します（下書きは残ります）。返信先のカードが一覧から消えたとき、画面を移ったときも枠は閉じます。
+- 同時に投稿できるのは 1 件です。別の Composer の投稿が終わっていないときは、`a commit is still being sent` と出して、本文を残します。
+- 投稿に成功すると、枠を閉じて下書きを消し、`✓ Replied a1b2c3d (in review)` と出します（承認済みなら `(in review)` はありません）。返信先の `replies_count` を、一覧、Saved、プロフィール、Thread のすべての写しで 1 増やします。Thread では、返信がすべて読み込み済みのときだけ、その一覧の末尾に足します。Log の一覧の先頭には入れません。ログの一覧はトップレベルの commit（`parent_id` が null のもの）だけを返すためです。
+- ゲストが押すとサインインのダイアログを開きます。
+
+**引用**（`q`）は、Composer のモーダルを `Quote @x` というタイトルで開きます。本文の下に引用元のカードを枠で表示します。
+
+```text
+╔ Quote @alice ════════════════════════════════════════════════╗
+║                                                              ║
+║ ◌  great idea,                                               ║
+║ ┆  quoting this                                              ║
+║ ┆                                                            ║
+║ ┌ ❝ alice @alice · 2m ─────────────────────────────────────┐ ║
+║ │ commit 1                                                 │ ║
+║ │ second line of commit 1                                  │ ║
+║ └──────────────────────────────────────────────────────────┘ ║
+║                                                              ║
+║ stash@{0} draft saved           Esc cancel  Ctrl+Enter Quote ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+- キーの案内は、キーボード拡張が使えない端末では `Ctrl+S` になります。
+- 引用元の枠は、M2b の引用の枠と同じ形（本文は 3 行まで）で、本文の下、エラーとカウンタの行の上に置きます。引用元は、モーダルを開いたときの commit です。
+- 下書きは引用先の commit ごとに持ち、New の下書きとは別です。投稿に成功すると Log の先頭に差し込み（新規の commit と同じ規則）、`✓ Quoted a1b2c3d (in review)` と出します。
 
 ### その他のメニュー
 
-カードを選んで `.` を押すと開きます。アクション行のキーを覚えていなくても使えるように、すべての操作をまとめています。
+カードを選んで `.` を押すと開きます。アクション行のキーを覚えていなくても使えるように、すべての操作をまとめています。タイトルは commit の short hash で、画面の中央に置きます。
+
+他人の commit（pastéis モードがオン）:
 
 ```text
 ╔ a1b2c3d ═══════════════╗
@@ -597,9 +796,28 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║  y  Copy link          ║
 ║  O  Open in browser    ║
 ║  !  Report             ║
+╚════════════════════════╝
+```
+
+自分の commit:
+
+```text
+╔ a1b2c3d ═══════════════╗
+║ ▌b  Save               ║
+║  y  Copy link          ║
+║  O  Open in browser    ║
 ║  d  Revert commit      ║
 ╚════════════════════════╝
 ```
+
+- **項目**: 上から `s`、`p`、`b`、`y`、`O`、`!`、`d` の順で、条件に合うものだけを出します。`s` は starred なら `Unstar`、`b` は保存済みなら `Unsave` と書きます。自分の commit には `s`（Star）、`p`（Give a pastel）、`!`（Report）を出さず、`d`（Revert commit）を出します。`p` は pastéis モードがオンで、自分の commit でないときだけ出します。`y` と `O` は、リンクの有無に関わらず出します（リンクがなければ、選んでも何も起きずにメニューが閉じます）。
+- **選択**: 開いたときは先頭の項目を選んでいます。`j` / `k`（`↓` / `↑`）で動かし、先頭と末尾で止まります（回り込みません）。`▌` が選択中の行です。
+- **実行**: `Enter` で選択中の項目を、項目の頭のキーでその項目をすぐに実行します。カードで直接キーを押したときと同じ操作になり、実行するとメニューは閉じます。`d` は確認ダイアログを、`!` は通報のダイアログを、メニューに代えて開きます。
+- **閉じる**: `Esc` で閉じます。`Ctrl+C` は終了です。ほかのキーは、`?` と `Q` も含めて無視します。
+- **対象**: 実行するのは、メニューを開いたカードです。その間に一覧が読み込み直されて選択が動いても、別のカードには効きません。そのカードが画面から消えていたら、何も起こさずに閉じます。star などの要求が飛んでいる間にその項目を選んでも、何も起きずに閉じます。
+- **項目と文言**: 開いたときに決まります。出ていない項目のキーは無視し、メニューは開いたままです。
+- **色**: 選択中の行（枠の内側の全幅）の背景色は、カードの選択と同じです。
+- **開けないとき**: ゲストはサインインのダイアログが開きます。セッションの復元中、tombstone、Show more の行、空の一覧、カードが 0 件の Profile、削除中のカードでは何も起きません。
 
 ### 確認ダイアログ
 
@@ -619,9 +837,9 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 削除している間は、カードを次の表示に置き換えます。
 
 ```text
-┌──────────────────────────────────────────┐
-│ rm a1b2c3d → /dev/null                   │
-└──────────────────────────────────────────┘
+┌────────────────────────┐
+│ rm a1b2c3d → /dev/null │
+└────────────────────────┘
 ```
 
 ### 通報
@@ -638,15 +856,22 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║ ┌──────────────────────────────────────┐ ║
 ║ │                                      │ ║
 ║ └──────────────────────────────────────┘ ║
+║                                    0/500 ║
 ║           Esc cancel   Enter submit      ║
 ╚══════════════════════════════════════════╝
 ```
 
-`reason` は `spam`、`harassment`、`unsafe`、`other` から選びます。`details` には 500 文字まで入力できます。
+`reason` は `spam`、`harassment`、`unsafe`、`other` から選びます。`details` には 500 文字（コードポイント）まで入力できます。
+
+- `▌` は、reason にフォーカスがあるときだけ、選択中の行に出します。
+- 欄の下の行に、右寄せで `N/500` を出します。失敗したときは、同じ行の左に `✗ <理由>` を出し、カウンタの左の幅に収まらなければ `…` で切ります。`network` のときは `network error — press Enter to retry` です。
+- `details` の欄は、折り返して 1〜4 行まで伸びます。モーダルの高さは 13 + 行数で、画面の中央に置き直します。4 行を超えたら、カーソルの行が見えるようにスクロールします。
+- 送信中は、案内の行が `Esc cancel   sending…` になり、入力は受け付けません。
+- 失敗したときはモーダルの中にエラーを出し、トーストは出しません。`Esc` で閉じたあとに届いた答えは、トーストで知らせます。
 
 ### キー一覧
 
-`?` で開きます。
+`?` で開きます。幅 60、高さ 23 です。人（`f` `m` `B`）、Settings（`S` `D` `h/l` `u`）、Notifications（`1-6` `a`）のキーも載せます。開いている間のステータスラインと Aside の Keys は、`Esc close` と `Q quit` だけです。
 
 ```text
 ╔ Keyboard shortcuts ══════════════════════════════════════╗
@@ -658,13 +883,19 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 ║  1-3     switch tab       p   give a pastel              ║
 ║  g l     log              b   save                       ║
 ║  g e     trending         y   copy link                  ║
-║  g n     notifications    .   more menu                  ║
-║  g p     profile          d   revert (own)               ║
-║  g s     settings        Global                          ║
-║  g v     saved            c   write a commit             ║
-║  g g / G top / bottom     R   refresh                    ║
+║  g n     notifications    O   open in browser            ║
+║  g p     profile          .   more menu                  ║
+║  g s     settings         d   revert (own)               ║
+║  g v     saved            !   report                     ║
+║  g g / G top / bottom    Global                          ║
+║  @       author profile   c   write a commit             ║
+║  3 / 4   follow lists     R   refresh                    ║
 ║                           ?   this help                  ║
 ║                           Q   quit                       ║
+║                                                          ║
+║ People        f follow   m mute   B block                ║
+║ Settings      S sync   D delete   h/l change   u release ║
+║ Notifications 1-6 filter   a all / none                  ║
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -680,7 +911,7 @@ Nav の Settings（`g s`）で開きます。`1`〜`3` で Profile、Appearance�
 | --- | --- | --- |
 | 成功 | `✓`（緑） | `✓ Committed a1b2c3d (in review)` |
 | エラー | `✗`（赤） | `✗ rate_limited: retry in 12s` |
-| 情報 | `i`（primary 色） | `i Link copied` |
+| 情報 | `i`（primary 色） | `i Copy sent to the terminal (OSC 52)` |
 
 - エラーは API の `code` ごとに文言を決めます（[dev-null-api.md のエラー](./dev-null-api.md#エラー) を参照）。`429` のときは、`Retry-After` の秒数を表示します。
 - `401 invalid_signature` は、端末の時計のずれが原因のことがあります。そのため、`check your system clock` を添えます。
@@ -695,10 +926,10 @@ flowchart LR
     SignIn -->|成功| Log
 
     Log -->|Enter| Thread
-    Log -->|Enter on name| Profile
-    Thread -->|Enter on name| Profile
+    Log -->|@| Profile
+    Thread -->|@| Profile
     Thread -->|Enter on reply| Thread
-    Profile -->|Enter on stats| Connections[Followers / Following]
+    Profile -->|3 / 4| Connections[Followers / Following]
     Connections -->|Enter| Profile
     Notifications -->|Enter| Thread
     Notifications -->|Enter on follow| Profile
@@ -733,24 +964,36 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | `g g` / `G` | 先頭 / 末尾 | 一覧 | 追加 |
 | `Esc` | 戻る、モーダルを閉じる | 全体 | 追加 |
 | `Tab` / `Shift+Tab` | 次 / 前のペイン | 全体 | 追加 |
-| `1`〜`3` | タブの切り替え | Log、Profile、Settings | 追加 |
+| `1`〜`3` | タブの切り替え（欄に入力している間は文字として入ります） | Log、Settings | 追加 |
+| `1` / `2` | タブの切り替え（Profile は Commits / Replies、Followers / Following は Followers / Following） | Profile、Followers / Following | 追加 |
+| `3` / `4` | Followers / Following を開く | Profile | 追加 |
+| `f` | フォロー / フォロー解除 | Profile、Followers / Following | 追加 |
+| `m` / `B` | ミュート / ブロック（確認あり）。ブロックした相手では `B` で解除 | Profile | 追加 |
+| `@` | 選択中のカードの作者のプロフィールを開く | 一覧、Thread、Profile の一覧 | 追加 |
 | `1`〜`6`、`a` | フィルターの切り替え | Notifications | 追加 |
-| `s` | star | カード | 追加 |
-| `p` | pastel を贈る | カード | 追加 |
+| `s` | star（自分の commit には付けられません） | カード | 追加 |
+| `p` | pastel を贈る（pastéis モードがオンのときだけ。自分の commit には贈れません） | カード | 追加 |
 | `b` | 保存 | カード | 追加 |
 | `.` | その他のメニュー | カード | 追加 |
 | `!` | 通報 | カード | 追加 |
 | `d` | 削除（自分の commit のみ） | カード | 追加 |
-| `O` | ブラウザで開く | カード、Profile | 追加 |
+| `O` | ブラウザで開く。カードを選んでいればその commit、Profile でカードが 1 件もなければそのユーザーのページ | カード、Profile | 追加 |
 | `f` / `m` / `B` | フォロー / ミュート / ブロック | Profile、ユーザー一覧 | 追加 |
-| `S` / `D` | GitHub の再同期 / アカウントの削除 | Settings | 追加 |
+| `S` / `D` | GitHub の再同期 / アカウントの削除（確認あり） | Settings の Profile | 追加 |
+| `←` / `→`（`h` / `l`） | lane 色の選択肢のカーソル | Settings の Profile | 追加 |
+| `Space` | pastéis モードの切り替え（`Enter` も同じ） | Settings の Profile | 追加 |
+| `u` / `Enter` | ミュート / ブロックの解除 | Settings の Safety | 追加 |
+| `j` / `k`、`←` / `→`（`h` / `l`）、`Enter`、`Space` | 行の移動と、値の変更（すぐ `config.toml` に保存） | Settings の Appearance | 追加 |
 | `L` | サインイン | ゲスト | 追加 |
 | `R` | 読み込み直す | 全体 | 追加 |
-| `Ctrl+Enter` | 投稿 | Composer | Web（`⌘↵`） |
+| `Ctrl+Enter` | 投稿（端末が `Enter` と区別できるとき） | Composer | Web（`⌘↵`） |
+| `Ctrl+S` | 投稿（どの端末でも） | Composer | 追加 |
 | `Q` / `Ctrl+C` | 終了 | 全体 | 追加 |
 
 - **終了は `q` ではなく `Q`**: TUI では `q` で終了するのが一般的ですが、Web 版では `q` が Quote に割り当てられています。Web 版との一致を優先して、終了は `Q` と `Ctrl+C` にします。いまの `src/main.rs` は `q` と `Esc` で終了するので、実装するときに変えます。
-- **文字の入力中**（Composer、Code、`details`）は、`Esc` と `Ctrl+Enter` 以外のキーをすべて入力として扱います。
+- **`1`〜`3` と `3` / `4` の違い**: Log と Settings の `1`〜`3` は、同じ画面の中でタブを切り替えます。Profile の `1` / `2` も同じ画面の中のタブ（Commits / Replies）の切り替えですが、`3` / `4` はタブではなく、別の画面（Followers / Following）を履歴に積んで開くので、`Esc` で Profile に戻ります。Followers / Following の `1` / `2` は、履歴に積まずに画面を置き換えます。
+- **`@` は作者のプロフィールを開く**: カードの中で操作対象を選ぶ仕組みがないため、Web 版の「作者名をクリック」に当たる操作を、選択中のカードの作者に対する `@` にしています。いま見ているプロフィールと同じ人のカードでは何もしません。
+- **文字の入力中**（Composer、Code、`details`）は、`Esc`、投稿のキー（`Ctrl+Enter`、`Ctrl+S`）、`Ctrl+C` 以外のキーをすべて入力として扱います。`j`、`q`、`?`、`Q` も文字として入ります。通報の `details` だけは例外で、`Tab`（理由の選択に戻る）と `Enter`（送信）も入力ではなく操作です。
 - **破壊的な操作には大文字を使う**: `B`（ブロック）と `D`（アカウントの削除）は、押し間違えを避けるために大文字にしています。
 
 ## Web 版との差分
@@ -769,6 +1012,7 @@ Web 版のキーボードショートカット（`use-keyboard-shortcuts.ts`）�
 | Geist と Geist Mono | 太字・dim・色 | 端末は等幅フォントだけのため |
 | 🥧 | `◓` | 絵文字の表示幅が端末によって違うため |
 | 無限スクロール | 末尾の手前で先に読み込む | スクロールイベントがないため |
+| `Ctrl+Enter` だけで投稿 | `Ctrl+S` でも投稿。キーの案内は端末に合わせる | 多くの端末が `Ctrl+Enter` を `Enter` と区別できないため |
 | モバイルのフローティングボタン | `c` キー | 不要なため |
 
 ### 対象外（API がないもの）

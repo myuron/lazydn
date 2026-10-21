@@ -1,0 +1,28 @@
+---
+source: src/ui/settings_write_tests.rs
+expression: terminal.backend()
+---
+"┌──┐┏ Settings ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"│  │┃         Profile                Appearance                Safety          ┃"
+"│ ◉│┃                                ━━━━━━━━━━                                ┃"
+"│ ◎│┃                                                                          ┃"
+"│ ◯│┃ Theme                                            dark  (not applied yet) ┃"
+"│ ⊡│┃ Collapse nav                                  [ ] off  (not applied yet) ┃"
+"│▌⚙│┃ Lane dimming                                  [ ] off  (not applied yet) ┃"
+"│  │┃▌Reply previews                                                         5 ┃"
+"│ +│┃ ASCII mode                                                       [ ] off ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"│  │┃                                                                          ┃"
+"└──┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" Settings  j/k row  h/l change  1-3 tab  ? help                             -/- "

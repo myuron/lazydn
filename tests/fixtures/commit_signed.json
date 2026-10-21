@@ -1,0 +1,153 @@
+{
+  "data": {
+    "id": "01a15000-0000-7000-8000-0000000b9b9b",
+    "short_hash": "00b9b9b",
+    "body": "hi @ab see\n```php\necho 1;\n```\nuse `x`\n```\nplain\n```",
+    "parent_id": "01a14000-0000-7000-8000-000000000001",
+    "html_url": "https://dev-null.sh/@alice/commits/01a15000-0000-7000-8000-0000000b9b9b",
+    "created_at": "2026-10-15T13:02:44Z",
+    "stars_count": 1,
+    "replies_count": 2,
+    "link_preview": null,
+    "images": [],
+    "author": {
+      "id": "user-alice",
+      "username": "alice",
+      "name": "Name alice",
+      "avatar_url": "https://avatars.example/alice",
+      "bio": null,
+      "company": null,
+      "location": null,
+      "website": null,
+      "github_url": "https://github.com/alice",
+      "html_url": "https://dev-null.sh/@alice",
+      "feed_url": "https://dev-null.sh/@alice/feed.atom",
+      "created_at": "2026-10-15T13:02:44Z",
+      "lane": 3
+    },
+    "body_segments": [
+      {
+        "type": "text",
+        "text": "hi @ab see"
+      },
+      {
+        "type": "block",
+        "language": "php",
+        "html": "<span class=\"hl-keyword\">echo</span> 1;"
+      },
+      {
+        "type": "text",
+        "text": "use "
+      },
+      {
+        "type": "code",
+        "code": "x"
+      },
+      {
+        "type": "block",
+        "language": null,
+        "html": "plain"
+      }
+    ],
+    "preview_segments": [
+      {
+        "type": "text",
+        "text": "hi @ab see…"
+      }
+    ],
+    "mentions": [
+      {
+        "username": "ab",
+        "offset": 3,
+        "length": 3
+      }
+    ],
+    "status": "pending",
+    "is_pinned": false,
+    "starred": true,
+    "is_saved": true,
+    "pasteis_count": 3,
+    "deleted_at": null,
+    "quoted_commit_id": null,
+    "reply_preview": {
+      "data": [
+        {
+          "id": "01a15001-0000-7000-8000-00000000c0c0",
+          "short_hash": "000c0c0",
+          "body": "first reply",
+          "parent_id": null,
+          "html_url": "https://dev-null.sh/@bob/commits/01a15001-0000-7000-8000-00000000c0c0",
+          "created_at": "2026-10-15T13:02:44Z",
+          "stars_count": 1,
+          "replies_count": 0,
+          "link_preview": null,
+          "images": [],
+          "author": {
+            "id": "user-bob",
+            "username": "bob",
+            "name": null,
+            "avatar_url": "https://avatars.example/bob",
+            "bio": null,
+            "company": null,
+            "location": null,
+            "website": null,
+            "github_url": "https://github.com/bob",
+            "html_url": "https://dev-null.sh/@bob",
+            "feed_url": "https://dev-null.sh/@bob/feed.atom",
+            "created_at": "2026-10-15T13:02:44Z",
+            "lane": 1
+          },
+          "body_segments": [
+            {
+              "type": "text",
+              "text": "first reply"
+            }
+          ],
+          "preview_segments": null,
+          "mentions": [],
+          "status": "approved",
+          "is_pinned": false,
+          "starred": false,
+          "is_saved": false,
+          "pasteis_count": 0,
+          "deleted_at": null,
+          "quoted_commit_id": null,
+          "reply_preview": {
+            "data": [],
+            "next_cursor": null
+          }
+        },
+        {
+          "id": "01a15002-0000-7000-8000-00000000d0d0",
+          "parent_id": "01a15000-0000-7000-8000-0000000b9b9b",
+          "deleted_at": "2026-10-16T09:00:00Z",
+          "replies_count": 0
+        }
+      ],
+      "next_cursor": "cursor-rp"
+    },
+    "poll": {
+      "id": "poll-1",
+      "closes_at": "2026-10-25T00:00:00.000000Z",
+      "is_closed": false,
+      "has_voted": false,
+      "total_votes": null,
+      "options": [
+        {
+          "id": "o1",
+          "label": "yes",
+          "votes_count": null,
+          "voted": false,
+          "percentage": null
+        },
+        {
+          "id": "o2",
+          "label": "no",
+          "votes_count": null,
+          "voted": false,
+          "percentage": null
+        }
+      ]
+    }
+  }
+}

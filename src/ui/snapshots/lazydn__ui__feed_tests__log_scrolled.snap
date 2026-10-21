@@ -1,0 +1,28 @@
+---
+source: src/ui/feed_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ Log ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃      Following               Latest               Trending       ┃│ ◉ myuron                     │"
+"│ for devs         │┃      ━━━━━━━━━                                                   ┃│ ● @myuron                    │"
+"│                  │┃ │ commit 3                                                       ┃│                              │"
+"│▌◉ Log            │┃ │ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                                 ⊡ ⚑ ┃│ 42 commits                   │"
+"│ ◎ Notifications  │┃ │                                                                ┃│ 10 following  12 followers   │"
+"│                12│┃ ◉ Alice @alice · 11m                                     h000004 ┃│ ◓ 7/10 pasteis left          │"
+"│ ◯ Profile        │┃ │ commit 4                                                       ┃│                              │"
+"│ ⊡ Saved          │┃ │ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                                 ⊡ ⚑ ┃│ Rust / TUI enjoyer           │"
+"│ ⚙ Settings       │┃ │                                                                ┃└──────────────────────────────┘"
+"│                  │┃ ◉ Bob @bob · 13m                                         h000005 ┃┌ Keys ────────────────────────┐"
+"│ [ c  Commit ]    │┃ │ commit 5                                                       ┃│ j/k  move     ↵  open        │"
+"│                  │┃ │ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                                 ⊡ ⚑ ┃│ c    commit   r  reply       │"
+"│                  │┃ │                                                                ┃│ s    star     o  replies     │"
+"│                  │┃ ◉ Alice @alice · 15m                                     h000006 ┃│ ?    all keys                │"
+"│                  │┃ │ commit 6                                                       ┃└──────────────────────────────┘"
+"│                  │┃ │ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                                 ⊡ ⚑ ┃                                "
+"│                  │┃ │                                                                ┃                                "
+"│                  │┃▌◉ Bob @bob · 17m                                         h000007 ┃                                "
+"│                  │┃▌│ commit 7                                                       ┃                                "
+"│                  │┃▌│ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                                 ⊡ ⚑ ┃                                "
+"│ @myuron          │┃ ○ That's the root commit. There's nothing before it.             ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Log > Following  j/k move  ↵ open  c commit  Tab pane  ? help                                    API -/-  ○ connecting "

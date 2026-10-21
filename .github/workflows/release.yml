@@ -1,0 +1,98 @@
+name: Release
+
+# When: on every push of a version tag such as v0.1.0.
+on:
+  push:
+    tags: ['v*']
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  # How: confirm the tagged commit is on main and the tag matches Cargo.toml,
+  # then run the CI checks and a dry-run package so a broken tag stops here.
+  # Tests run in the build job on every target, so they are not repeated here.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Check the tag is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+      - name: Check tag matches the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo_version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')"
+          echo "tag=$tag Cargo.toml=$cargo_version"
+          test "$tag" = "$cargo_version"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - run: cargo publish --dry-run --locked
+
+  # How: build natively on each runner (no cross compilation), test, then
+  # package the binary with README and LICENSE and a sha256 file.
+  # ubuntu-22.04 keeps the glibc requirement low for the Linux binaries.
+  build:
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          # This runner label is only free for public repositories.
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          save-if: false
+      - run: cargo test --locked --all-features
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          name="lazydn-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/${{ matrix.target }}/release/lazydn" README.md LICENSE "$name/"
+          COPYFILE_DISABLE=1 tar czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lazydn-${{ matrix.target }}
+          path: |
+            lazydn-*.tar.gz
+            lazydn-*.tar.gz.sha256
+
+  # How: collect every artifact and attach it to a new GitHub Release.
+  # Only this job gets write access.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -1,0 +1,29 @@
+{
+  "data": {
+    "id": "user-alice",
+    "username": "alice",
+    "name": "Name alice",
+    "avatar_url": "https://avatars.example/alice",
+    "bio": null,
+    "company": null,
+    "location": null,
+    "website": null,
+    "github_url": "https://github.com/alice",
+    "html_url": "https://dev-null.sh/@alice",
+    "feed_url": "https://dev-null.sh/@alice/feed.atom",
+    "created_at": "2026-10-15T13:02:44Z",
+    "lane": "#ff8800",
+    "commits_count": 5,
+    "followers_count": 6,
+    "following_count": 7,
+    "pasteis_mode": true,
+    "pasteis_remaining": 8,
+    "pasteis_resets_at": "2026-10-21T00:00:00Z",
+    "pasteis_received": 9,
+    "preferred_lane": "#ff8800",
+    "automatic_lane": 2,
+    "sponsors_url": null,
+    "github_synced_at": "2026-10-19T08:00:00Z"
+  },
+  "unread_notifications_count": 4
+}

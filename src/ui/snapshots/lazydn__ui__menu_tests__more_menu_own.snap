@@ -1,0 +1,28 @@
+---
+source: src/ui/menu_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────────────────────────────────────────────┐"
+"│▌Log  Notifs(12)  Profile  Saved  Settings                │"
+"└──────────────────────────────────────────────────────────┘"
+"┏ Log ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+"┃     Following            Latest            Trending      ┃"
+"┃     ━━━━━━━━━                                            ┃"
+"┃ ┆                                                        ┃"
+"┃ ◌  What did you ship?                                    ┃"
+"┃ ┆                                    [c] Write a commit  ┃"
+"┃ ┆              ╔ a1b2c3d ═══════════════╗                ┃"
+"┃ ╎ ── Today ────║ ▌b  Save               ║─────────────── ┃"
+"┃ │              ║  y  Copy link          ║                ┃"
+"┃▌◉ Myuron @myuro║  O  Open in browser    ║        a1b2c3d ┃"
+"┃▌│ body of c0   ║  d  Revert commit      ║                ┃"
+"┃▌│ ☆ 1  ◓ 0  ❝ Q╚════════════════════════╝            ⊡ ⚑ ┃"
+"┃ │                                                        ┃"
+"┃ ◉ Bob @bob · 1m                                  00000c1 ┃"
+"┃ │ body of c1                                             ┃"
+"┃ │ ☆ 1  ◓ 0  ❝ Quote  ↩ Reply                         ⊡ ⚑ ┃"
+"┃ │                                                        ┃"
+"┃ ◉ Carol @carol · 1m                              00000c2 ┃"
+"┃ │ body of c2                                             ┃"
+"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+" j/k ↵ Esc                                              -/- "

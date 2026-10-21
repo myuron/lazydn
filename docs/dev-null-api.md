@@ -209,7 +209,7 @@ pastéis モードのオン・オフを切り替えます。`GET /v1/me` と同�
 
 #### `GET /v1/log/{log}`
 
-`{log}` には `following`、`latest`、`trending` のどれかを指定します。1 ページ 20 件です。
+`{log}` には `following`、`latest`、`trending` のどれかを指定します。1 ページ 20 件です。返すのはトップレベルの commit（`parent_id` が null のもの）だけで、返信は含まれません。
 
 | クエリ | 内容 |
 | --- | --- |
@@ -297,7 +297,7 @@ commit に star を付ける、または外します。
 | `type` | `all`、`none`、または `replies`、`quotes`、`stars`、`mentions`、`follows`、`moderation` のカンマ区切り。指定した値は Cookie に保存され、省略したときに使われます |
 | `through` | 日時。指定した時点までの通知を返します |
 
-- **呼ぶと、フィルターにかかわらず全通知が既読になります。** トップレベルの `read_at` に既読にした時刻が入るので、各通知の `read_at` がそれより前のものが今回の新着です。
+- **呼ぶと、フィルターにかかわらず全通知が既読になります。** トップレベルの `read_at` には、既読にした時刻が入ります。応答の各通知の `read_at` は既読にした後の値です。そのため、`read_at` が null か、トップレベルの `read_at` 以上のものが今回の新着になります（Web 版の `isNewSince` と同じ規則）。一覧の `unread_count` は既読にした後に数えるので、常に 0 です。
 - トップレベルに `filters.type` も付きます。
 
 #### `GET /v1/notifications/{id}/group`
@@ -471,6 +471,6 @@ commit に star を付ける、または外します。
 ## lazydn での使い方
 
 - **読み取りだけ**なら、公開 API で足ります。プロフィール、ユーザーの commit、フォロー関係、commit 1 件を取得できます。ただし、タイムライン（`/v1/log/*`）、返信一覧、通知には署名が必要です。
-- **フル機能**を使うには、SSH 鍵を作り、デバイス登録フローで承認を受けたうえで、全リクエストに署名します。ただし、Web 側で `code` を発行する承認画面の仕様（リダイレクト先など）は、この API の範囲外です。`routes/web.php` の mobile authorization 周りを別途調べる必要があります。
+- **フル機能**を使うには、SSH 鍵を作り、デバイス登録フローで承認を受けたうえで、全リクエストに署名します。承認画面は Web 側の `GET /mobile/authorize` で、パラメータは `fingerprint`、`device_name`（100 文字まで）、`code_challenge`、`code_challenge_method=S256`、`state`、`redirect_uri` です。`redirect_uri` は `devnull://` で始まる必要があり、承認すると `?code=<64 文字の 16 進数>&state=…` 付きでそこへリダイレクトされます（キャンセルなら `error=access_denied`）。code の有効期限は 5 分で、1 回だけ使えます。
 - **投稿だけ**なら、GitHub に登録済みの SSH 鍵を使って CLI 方式（`/cli/key-lookups` → `/cli/commits`）でもできます。デバイス登録は必要ありません。
 - 署名には `ssh-keygen -Y sign -n <namespace>` 相当の SSHSIG 形式を使います。Rust なら `ssh-key` crate の `SshSig` で作れます。

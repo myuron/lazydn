@@ -1,0 +1,28 @@
+---
+source: src/ui/follow_tests.rs
+expression: terminal.backend()
+---
+"┌ /dev/null ───────┐┏ Bob ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌ Me ──────────────────────────┐"
+"│ a social network │┃                                                                  ┃│ ◉ myuron                     │"
+"│ for devs         │┃ ◉ Bob                                                            ┃│ ● @myuron                    │"
+"│                  │┃ ● @bob                                                           ┃│                              │"
+"│ ◉ Log            │┃                                                                  ┃│ 42 commits                   │"
+"│ ◎ Notifications  │┃ Not for you.                                                     ┃│ 10 following  12 followers   │"
+"│                12│┃                                                                  ┃│ ◓ 7/10 pasteis left          │"
+"│ ◯ Profile        │┃ ⚲ Lisbon   Joined Oct 2026                                       ┃│                              │"
+"│ ⊡ Saved          │┃                                                                  ┃│ Rust / TUI enjoyer           │"
+"│ ⚙ Settings       │┃ You blocked @bob. [B] Unblock                                    ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃┌ Keys ────────────────────────┐"
+"│ [ c  Commit ]    │┃                                                                  ┃│ B  unblock   Esc  back       │"
+"│                  │┃                                                                  ┃│ ?  all keys                  │"
+"│                  │┃                                                                  ┃│                              │"
+"│                  │┃                                                                  ┃│                              │"
+"│                  │┃                                                                  ┃└──────────────────────────────┘"
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│                  │┃                                                                  ┃                                "
+"│ @myuron          │┃                                                                  ┃                                "
+"└──────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                "
+" Profile  B unblock  Esc back  Tab pane  ? help                                                   API -/-  ○ connecting "
