@@ -2,9 +2,14 @@
 name = "lazydn"
 version = "0.1.0"
 edition = "2024"
-description = "A terminal UI application"
+description = "A terminal UI client for dev-null.sh"
 license = "MIT"
 repository = "https://github.com/myuron/lazydn"
+homepage = "https://github.com/myuron/lazydn"
+readme = "README.md"
+keywords = ["tui", "ratatui", "dev-null", "social", "terminal"]
+categories = ["command-line-utilities"]
+exclude = [".github/", "docs/", "nix/", "flake.nix", "flake.lock", "justfile", "CLAUDE.md", ".envrc"]
 
 [dependencies]
 base64 = "0.22"

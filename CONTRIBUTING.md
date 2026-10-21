@@ -37,6 +37,19 @@ Please run `just check` before opening a pull request.
 3. Make sure `just check` passes.
 4. Open a pull request in English and fill in the template (What + Why).
 
+## Releasing
+
+1. Start from an up-to-date `main` whose CI is green. Bump the version in `Cargo.toml`, then run `cargo check` so `Cargo.lock` is updated (`nix/rust.nix` reads the version from `Cargo.toml`). Merge the change to `main`.
+2. Tag the merge commit and push the tag:
+
+   ```sh
+   git tag vX.Y.Z && git push origin vX.Y.Z
+   ```
+
+   The tag triggers `.github/workflows/release.yml`: it verifies the tag is on `main` and matches the version, builds the three targets and creates the GitHub Release.
+3. If the workflow fails because of a flaky job, re-run that job. If the tagged commit itself is wrong, fix it on `main`, delete the tag (`git push origin :refs/tags/vX.Y.Z && git tag -d vX.Y.Z`) and tag again. If the `release` job already created the GitHub Release, delete it first (`gh release delete vX.Y.Z`).
+4. Only after the GitHub Release has succeeded, publish to crates.io by hand. Run `cargo login` once, check out the tag on a clean tree, then run `cargo publish --dry-run` followed by `cargo publish`. This cannot be undone (a version can only be yanked), so it is not part of the workflow.
+
 ## Reporting issues
 
 Use the issue templates for bug reports and feature requests.
